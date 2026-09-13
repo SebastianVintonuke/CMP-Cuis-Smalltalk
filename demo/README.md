@@ -27,14 +27,29 @@ CORS ni de transporte.
 ## Cómo se levanta el servidor
 
 El panel no levanta ni apaga nada: el servidor es parte de la imagen y se arranca desde
-adentro, como cualquier otra cosa de Smalltalk (un doit en un Workspace):
+adentro, como cualquier otra cosa de Smalltalk (un doit en un Workspace).
+
+Lo primero es cargar el paquete, que declara lo que necesita (JSON y WebClient):
+
+```smalltalk
+Feature require: 'JSON'.
+Feature require: 'WebClient'.
+Feature require: 'MCPServer'.
+Feature require: 'MCPServerTest'.
+```
+
+Y después se levanta el servidor:
 
 ```smalltalk
 | server |
-server := MCPServer on: 8790 tools: { MCPServerWorkspaceTools. MCPServerBrowserTools }.
+server := MCPServer on: 8790 tools: { MCPServerWorkspaceTools. MCPServerBrowserTools. MCPServerTestingTools }.
 server start.
 Smalltalk at: #MCPDemo put: server
 ```
+
+Ojo: si ya había uno escuchando en ese puerto, `start` avisa (`Failed to listen`) y no
+levanta nada; para rearmarlo hay que destruir el anterior y esperar un momento antes de
+crear el nuevo.
 
 Y se apaga con `(Smalltalk at: #MCPDemo) destroy`. Si la imagen se reinicia, hay que
 volver a arrancarlo (todavía no está en el arranque de Cuis).

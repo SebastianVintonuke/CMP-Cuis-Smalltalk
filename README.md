@@ -41,17 +41,26 @@ headless aparte.
 
 ## Estado
 
-- **El paquete existe**: `src/MCPServer.pck.st` (10 clases de producción) y
-  `src/MCPServerTest.pck.st` (9 clases de test), con **siete herramientas**:
-  `print_it`, la del Workspace, y las seis del Browser (leer los selectores de una
-  clase y su comentario, leer la fuente de un método, ver quién manda un selector,
-  compilar un método y removerlo). Cada herramienta se declara con un pragma y su
-  descripción es el comentario del método que la implementa; en su `_meta` dice de qué
-  ventana de la imagen viene.
+- **El paquete existe**: `src/MCPServer.pck.st` (12 clases de producción) y
+  `src/MCPServerTest.pck.st` (9 clases de test, más la clase de trabajo de los tests),
+  con **trece herramientas** en tres fachadas:
+  - *Workspace*: `print_it`.
+  - *Browser*: `selectors_of_class`, `source_of_method_in_class`, `comment_of_class`,
+    `all_calls_on`, `all_implementors_of`, `hierarchy_of_class`,
+    `compile_method_in_class_classified`, `remove_method_in_class`,
+    `classify_method_in_class_under` y `file_out_package_to`.
+  - *Test Runner*: `run_tests_in_class` y `run_tests_in_category`.
+
+  Cada herramienta se declara con un pragma, su descripción es el comentario del método
+  que la implementa, y en su `_meta` dice de qué ventana de la imagen viene.
 - **Flujo MCP funcionando**: `initialize`, `tools/list` y `tools/call` sobre HTTP en
-  `/mcp`, verificado contra la imagen viva. Para levantarlo:
-  `MCPServer on: 8790 tools: { MCPServerWorkspaceTools. MCPServerBrowserTools }` y
-  `start`; se apaga con `destroy`, que libera el puerto.
+  `/mcp`, verificado contra la imagen viva. Para levantarlo: `MCPServer on: 8790 tools:
+  { MCPServerWorkspaceTools. MCPServerBrowserTools. MCPServerTestingTools }` y `start`;
+  se apaga con `destroy`, que libera el puerto.
+- **Dependencias declaradas**: `MCPServer` pide `WebClient` y `JSON`, y el paquete de
+  tests pide `MCPServer`, así que `Feature require: 'MCPServer'` trae todo.
+- **El ciclo de trabajo se hace por MCP**: leer, escribir, correr los tests y exportar,
+  todo a través del servidor. No hace falta ningún endpoint aparte en la imagen.
 - La traza del trabajo TDD (los 21 ciclos, los rojos y verdes, lo que encontró el
   e2e) está en `docs/traza-tdd.md`.
 - Para probarlo a mano hay un panel chico en `demo/` (lista las herramientas y las

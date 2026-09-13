@@ -203,6 +203,40 @@ propios del servidor.
 Un cliente lo puede usar para agrupar o para mostrar de dónde sale cada herramienta (el
 panel de `demo/` lo muestra al lado del nombre).
 
+## El Test Runner y exportar (ciclos 25 a 27)
+
+Para cerrar el ciclo de trabajo faltaban dos cosas: correr los tests y sacar el código
+fuera de la imagen. Y una tercera que apareció en el camino: el acceso a la imagen
+estaba duplicado en la fachada del Browser, y el Test Runner necesitaba lo mismo.
+
+| # | Test | Rojo | Verde | Qué se implementó |
+| --- | --- | --- | --- | --- |
+| 25 | (refactor) el acceso a la imagen pasa a `MCPServerEnvironment`, compartido por las fachadas | — | 35/35 | `MCPServerEnvironment` con `classNamed:` del lado de clase; las ocho llamadas de la fachada del Browser pasan a usarlo |
+| 26 | el Test Runner: correr los tests de una clase, y tomar las clases de test de una categoría | `UndefinedObject>>new` (la fachada no existía) | 38/38 | `MCPServerTestingTools`: `runTestsInClass:` y `runTestsInCategory:`, con el resumen de la corrida y cada defecto |
+| 27 | el file out de una categoría a un archivo | `MCPServerBrowserTools>>fileOutPackage:to:` | 39/39 | `fileOutPackage:to:` en la fachada del Browser |
+
+El ciclo de 25 fue un refactor: el comportamiento ya estaba cubierto por los tests del
+Browser, así que no hubo rojo, y quedó verde igual.
+
+### Lo que encontró este tramo
+
+1. **Un test de tests:** el primer test del Test Runner corría la categoría que contiene
+al propio test, y la suite se llamaba a sí misma. Recursión infinita: la imagen quedó
+trabada (100% de CPU, sin contestar por ningún puerto) y el VM terminó saliendo al
+intentarlo interrumpir desde afuera. No se perdió código: el paquete estaba en `src/` y
+todas las fuentes del día en el `.changes`. El test quedó tomando las clases de una
+categoría **sin correrlas** (la corrida real se prueba desde afuera, con
+`run_tests_in_category`, que es el uso de verdad).
+2. **Una imagen nueva pide autor:** la primera vez que se cambia código, Cuis pide el
+autor con un diálogo (`Utilities>>setAuthor`, que se cuelga esperando), y con eso el
+script de arranque nunca termina. Se arregla antes que nada con
+`Utilities setAuthorName: 'Sebastian' initials: 'S.V.'`.
+3. **Rearmar el servidor pide una pausa:** destruirlo y crearlo en el mismo pedido deja
+el puerto tomado y el nuevo no escucha. Hay que esperar entre `destroy` y `start`
+(por eso el script de arranque destruye, espera y recién después crea).
+4. **Los requisitos que faltaban:** el paquete usaba `WebServer` (de `WebClient`) y no
+lo declaraba, y el de tests no declaraba que necesita `MCPServer`. Ahora sí.
+
 ## File out
 
 Quedaron `src/MCPServer.pck.st` (10 clases de producción) y
@@ -225,5 +259,9 @@ regenerar), y `MCPServerTest` (la clase) tuvo que moverse a la categoría
 4. **Sesiones MCP**: hoy el servidor es sin estado, no recuerda el `protocolVersion`
    negociado (alcanza para el Inspector; no para sesiones con estado).
 5. **`annotations`** (hints) y la **lista dinámica de herramientas**: anotados para después.
-6. **Instalación limpia**: cargar el `.pck.st` en una imagen limpia para verificar
-   el ciclo completo de `Feature require: 'MCPServer'`.
+6. **Instalación limpia**: verificado a medias — una imagen nueva carga el paquete desde
+   `Packages/Features` con `Feature require: 'MCPServer'` (y se trae JSON solo). Falta
+   probar el ciclo completo con el servidor arrancando desde el arranque de Cuis.
+7. **Que la imagen arranque el servidor sola**, en vez de pegarlo a mano en un Workspace.
+8. **Herramientas del Browser que faltan**: listar y buscar clases, renombrar (método o
+   clase, actualizando los remitentes), crear y borrar clases, buscar texto en el código.

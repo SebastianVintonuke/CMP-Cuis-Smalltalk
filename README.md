@@ -53,6 +53,9 @@ headless aparte.
   `start`; se apaga con `destroy`, que libera el puerto.
 - La traza del trabajo TDD (los 21 ciclos, los rojos y verdes, lo que encontró el
   e2e) está en `docs/traza-tdd.md`.
+- Para probarlo a mano hay un panel chico en `demo/` (lista las herramientas y las
+  corre con un formulario, estilo Swagger): `python3 demo/panel-mcp.py`. Detalles en
+  `demo/README.md`.
 - El spike y las notas de trabajo viven en `~/OpenClawWorkshop/cmp-cuis-notas/`
   (fuera de este repo).
 - Para mirar los resultados a mano usamos el **MCP Inspector** oficial: se conecta

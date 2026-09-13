@@ -330,6 +330,18 @@ Y una lección de método que ya se repitió dos veces: **compilar un test con o
 reemplaza al anterior**. Cuando la expectativa cambia, el test tiene que cambiar de cuerpo y
 conservar su selector.
 
+## Listar, buscar y refactorizar (ciclos 32 a 34)
+
+Las herramientas que faltaban para completar el catálogo del Browser.
+
+| # | Test | Rojo | Verde | Qué se implementó |
+| --- | --- | --- | --- | --- |
+| 32 | las clases de una categoría, la búsqueda de clases y la búsqueda de texto en los métodos | `MCPServerBrowserTools>>classesInCategory:` | 44/44 | `classesInCategory:`, `classesMatching:` y `methodsContaining:`; y el listado acotado, que ya estaba duplicado en dos métodos, se extrajo a `writeLinesFor:labelled:on:` |
+
+De paso se midió lo que cuesta la búsqueda de texto: **18.224 métodos en 2,5 segundos**, con las
+fuentes leídas una por una. Es aceptable para una herramienta y para un test, y es el dato que
+fija el techo de esa búsqueda.
+
 ## File out
 
 Quedaron `src/MCPServer.pck.st` (10 clases de producción) y

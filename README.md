@@ -48,7 +48,8 @@ headless aparte.
   - *Browser*: `selectors_of_class`, `source_of_method_in_class`, `comment_of_class`,
     `all_calls_on`, `all_implementors_of`, `hierarchy_of_class`,
     `compile_method_in_class_classified`, `remove_method_in_class`,
-    `classify_method_in_class_under` y `file_out_package_to`.
+    `classify_method_in_class_under`, `file_out_package_to`, `classes_in_category`,
+    `classes_matching` y `methods_containing`.
   - *Test Runner*: `run_tests_in_class` y `run_tests_in_category`.
 
   Cada herramienta se declara con un pragma, su descripción es el comentario del método

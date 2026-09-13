@@ -274,34 +274,57 @@ on: aPort tools: aCollectionOfClasses
 		setPort: aPort
 		catalogue: (MCPServerCatalogueBuilder buildFrom: aCollectionOfClasses)! !
 
-!MCPServerBrowserTools methodsFor: 'accessing' stamp: 'S.V. 13/Sep/2026 15:42:52'!
+!MCPServerBrowserTools methodsFor: 'accessing' stamp: 'S.V. 13/Sep/2026 20:55:32'!
 allCallsOn: aSelectorString
-	"The senders pane: every method in the image that sends that selector, each one
-	written as the Browser writes a method reference. The first 100 are listed."
+	"The senders pane: every method in the image that sends that selector, each one written
+	as the Browser writes a method reference. The first 100 are listed."
 	<mcpTool: #all_calls_on system: 'Browser' arguments: #('selector')>
 	| references out |
-	references := (Smalltalk allCallsOn: aSelectorString asSymbol)
-		asSortedCollection: [ :a :b | a printString <= b printString ].
+	references := ((Smalltalk allCallsOn: aSelectorString asSymbol)
+		asSortedCollection: [ :a :b | a printString <= b printString ]) asArray.
 	out := WriteStream on: String new.
-	out nextPutAll: references size printString, ' senders of ', aSelectorString; newLine.
-	references asArray withIndexDo: [ :each :index |
-		index > 100 ifTrue: [ ^ out contents ].
-		out nextPutAll: (self referenceStringFor: each); newLine ].
+	self writeLinesFor: (references collect: [ :each | self referenceStringFor: each ])
+		labelled: ('senders of ', aSelectorString) on: out.
 	^ out contents! !
 
-!MCPServerBrowserTools methodsFor: 'accessing' stamp: 'S.V. 13/Sep/2026 18:18:48'!
+!MCPServerBrowserTools methodsFor: 'accessing' stamp: 'S.V. 13/Sep/2026 20:55:32'!
 allImplementorsOf: aSelectorString
-	"The implementors pane: every method in the image that implements that selector,
-	written as the Browser writes a method reference. The first 100 are listed."
+	"The implementors pane: every method in the image that implements that selector, written
+	as the Browser writes a method reference. The first 100 are listed."
 	<mcpTool: #all_implementors_of system: 'Browser' arguments: #('selector')>
 	| references out |
-	references := (Smalltalk allImplementorsOf: aSelectorString asSymbol)
-		asSortedCollection: [ :a :b | a printString <= b printString ].
+	references := ((Smalltalk allImplementorsOf: aSelectorString asSymbol)
+		asSortedCollection: [ :a :b | a printString <= b printString ]) asArray.
 	out := WriteStream on: String new.
-	out nextPutAll: references size printString, ' implementors of ', aSelectorString; newLine.
-	references asArray withIndexDo: [ :each :index |
-		index > 100 ifTrue: [ ^ out contents ].
-		out nextPutAll: (self referenceStringFor: each); newLine ].
+	self writeLinesFor: (references collect: [ :each | self referenceStringFor: each ])
+		labelled: ('implementors of ', aSelectorString) on: out.
+	^ out contents! !
+
+!MCPServerBrowserTools methodsFor: 'accessing' stamp: 'S.V. 13/Sep/2026 20:55:32'!
+classesInCategory: aCategoryName
+	"The class pane: the classes whose system category is that one, the way the class list
+	shows them for the selected category."
+	<mcpTool: #classes_in_category system: 'Browser' arguments: #('category')>
+	| category classes out |
+	category := aCategoryName asSymbol.
+	classes := ((Smalltalk allClasses select: [ :each | each category = category ])
+		collect: [ :each | each name asString ]) asSortedCollection asArray.
+	out := WriteStream on: String new.
+	self writeLinesFor: classes labelled: ('classes in ', aCategoryName) on: out.
+	^ out contents! !
+
+!MCPServerBrowserTools methodsFor: 'accessing' stamp: 'S.V. 13/Sep/2026 20:55:32'!
+classesMatching: aString
+	"The class search: the classes whose name contains that text, the way the search of the
+	class pane finds them."
+	<mcpTool: #classes_matching system: 'Browser' arguments: #('text')>
+	| lower found out |
+	lower := aString asLowercase.
+	found := ((Smalltalk allClasses select: [ :each |
+		((each name asString asLowercase findString: lower) > 0) ])
+			collect: [ :each | each name asString ]) asSortedCollection asArray.
+	out := WriteStream on: String new.
+	self writeLinesFor: found labelled: ('classes matching ', aString) on: out.
 	^ out contents! !
 
 !MCPServerBrowserTools methodsFor: 'accessing' stamp: 'S.V. 13/Sep/2026 18:58:42'!
@@ -334,6 +357,24 @@ hierarchyOfClass: aClassName
 	out newLine.
 	^ out contents! !
 
+!MCPServerBrowserTools methodsFor: 'accessing' stamp: 'S.V. 13/Sep/2026 20:55:32'!
+methodsContaining: aString
+	"The method search: which methods of the image contain that text in their source, written
+	as the Browser writes a method reference."
+	<mcpTool: #methods_containing system: 'Browser' arguments: #('text')>
+	| found out |
+	found := OrderedCollection new.
+	Smalltalk allClasses do: [ :class |
+		{ class. class class } do: [ :side |
+			side selectors do: [ :selector |
+				| source |
+				source := (side compiledMethodAt: selector) sourceCode.
+				((source findString: aString) > 0) ifTrue: [
+					found add: (self referenceStringFor: (MethodReference class: side selector: selector)) ] ] ] ].
+	out := WriteStream on: String new.
+	self writeLinesFor: (found asSortedCollection asArray) labelled: ('methods containing ', aString) on: out.
+	^ out contents! !
+
 !MCPServerBrowserTools methodsFor: 'accessing' stamp: 'S.V. 13/Sep/2026 18:58:42'!
 selectorsOfClass: aClassName
 	"The class pane, the protocol pane and the selector pane: the selectors of the
@@ -364,6 +405,19 @@ referenceStringFor: aMethodReference
 	"Private. The method reference as the Browser writes it: the class, the word class
 	when it is the class side, and the selector."
 	^ aMethodReference actualClass name, '>>', aMethodReference selector asString! !
+
+!MCPServerBrowserTools methodsFor: 'private' stamp: 'S.V. 13/Sep/2026 20:55:32'!
+writeLinesFor: aCollection labelled: aString on: aStream
+	"Private. Write a header with the count and then one line per item, up to 100: the result
+	of a tool has to be bounded."
+	| items |
+	items := aCollection asArray.
+	aStream nextPutAll: items size printString, ' ', aString; newLine.
+	items withIndexDo: [ :each :index |
+		index > 100 ifTrue: [
+			aStream nextPutAll: '... and ', (items size - 100) printString, ' more'; newLine.
+			^ aStream contents ].
+		aStream nextPutAll: each asString; newLine ]! !
 
 !MCPServerBrowserTools methodsFor: 'private' stamp: 'S.V. 13/Sep/2026 15:44:13'!
 writeSelectorsOf: aClass on: aStream

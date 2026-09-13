@@ -286,6 +286,30 @@ test16WritesThePackageToAFile
 	self assert: (text contents findString: 'MCPServerBrowserToolsTest') > 0.
 	(FileEntry withAbsolutePathName: path) delete! !
 
+!MCPServerBrowserToolsTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 20:55:04'!
+test18AnswersTheClassesOfACategory
+	"The class pane: the classes of that system category, and no other."
+	| text |
+	text := MCPServerBrowserTools new classesInCategory: 'MCPServer'.
+	self assert: (text findString: 'MCPServerBrowserTools') > 0.
+	self assert: (text findString: 'MCPServerTestingTools') > 0.
+	self assert: (text findString: 'Object') equals: 0! !
+
+!MCPServerBrowserToolsTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 20:55:04'!
+test19AnswersTheClassesMatchingAName
+	"The class search: the classes whose name contains that text."
+	| text |
+	text := MCPServerBrowserTools new classesMatching: 'MCPServerTool'.
+	self assert: (text findString: 'MCPServerToolCatalogue') > 0.
+	self assert: (text findString: 'MCPServerBrowserTools') equals: 0! !
+
+!MCPServerBrowserToolsTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 20:55:04'!
+test20AnswersTheMethodsContainingSomeText
+	"The method search: which methods contain that text in their source."
+	| text |
+	text := MCPServerBrowserTools new methodsContaining: 'printStringLimitedTo:'.
+	self assert: (text findString: 'MCPServerWorkspaceTools>>printIt:') > 0! !
+
 !MCPServerBrowserToolsTest methodsFor: 'private' stamp: 'S.V. 13/Sep/2026 15:43:07'!
 tearDown
 	"The tests define and remove methods in the scratch class: leave it clean."

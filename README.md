@@ -41,14 +41,18 @@ headless aparte.
 
 ## Estado
 
-- **El paquete existe**: `src/MCPServer.pck.st` (9 clases de producción) y
-  `src/MCPServerTest.pck.st` (7 clases de test). La primera herramienta es
-  `print_it`, la análoga al print it del Workspace: declarada con un pragma, con
-  la descripción tomada del comentario del método, y ejecutable por MCP.
+- **El paquete existe**: `src/MCPServer.pck.st` (10 clases de producción) y
+  `src/MCPServerTest.pck.st` (9 clases de test), con **siete herramientas**:
+  `print_it`, la del Workspace, y las seis del Browser (leer los selectores de una
+  clase y su comentario, leer la fuente de un método, ver quién manda un selector,
+  compilar un método y removerlo). Cada herramienta se declara con un pragma y su
+  descripción es el comentario del método que la implementa.
 - **Flujo MCP funcionando**: `initialize`, `tools/list` y `tools/call` sobre HTTP en
-  `/mcp`, verificado contra la imagen viva. Para levantarlo: `MCPServer on: 8790
-  tools: { MCPServerWorkspaceTools }` y `start` (y `destroy` para apagarlo).
-- La traza del trabajo TDD está en `docs/trace-tdd-print-it.md`.
+  `/mcp`, verificado contra la imagen viva. Para levantarlo:
+  `MCPServer on: 8790 tools: { MCPServerWorkspaceTools. MCPServerBrowserTools }` y
+  `start`; se apaga con `destroy`, que libera el puerto.
+- La traza del trabajo TDD (los 21 ciclos, los rojos y verdes, lo que encontró el
+  e2e) está en `docs/traza-tdd.md`.
 - El spike y las notas de trabajo viven en `~/OpenClawWorkshop/cmp-cuis-notas/`
   (fuera de este repo).
 - Para mirar los resultados a mano usamos el **MCP Inspector** oficial: se conecta

@@ -6,12 +6,22 @@ SystemOrganization addCategory: #MCPServer!
 
 !classDefinition: #MCPServer category: #MCPServer!
 Object subclass: #MCPServer
-	instanceVariableNames: ''
+	instanceVariableNames: 'port catalogue webServer'
 	classVariableNames: ''
 	poolDictionaries: ''
 	category: 'MCPServer'!
 !classDefinition: 'MCPServer class' category: #MCPServer!
 MCPServer class
+	instanceVariableNames: ''!
+
+!classDefinition: #MCPServerBrowserTools category: #MCPServer!
+Object subclass: #MCPServerBrowserTools
+	instanceVariableNames: ''
+	classVariableNames: ''
+	poolDictionaries: ''
+	category: 'MCPServer'!
+!classDefinition: 'MCPServerBrowserTools class' category: #MCPServer!
+MCPServerBrowserTools class
 	instanceVariableNames: ''!
 
 !classDefinition: #MCPServerCatalogueBuilder category: #MCPServer!
@@ -101,6 +111,9 @@ the composition root of the package (the object the user creates with its
 parameters and destroys when it is done). I do not speak the protocol myself: I
 hand each request body to MCPServerProtocol and each response to the WebServer.!
 
+!MCPServerBrowserTools commentStamp: '<historical>' prior: 0!
+I am the Browser facade: the operations a programmer performs from the Browser pane, exposed as MCP tools. I read the image and I write in it: I speak the language of the class pane, the selector pane and the source pane, and I know nothing about the protocol. I hold no state and no window state.!
+
 !MCPServerCatalogueBuilder commentStamp: '<historical>' prior: 0!
 I build a catalogue by reading the tool declarations. For each method of each
 given class I ask for its descriptor; if it declares a tool, the tool goes into
@@ -147,17 +160,30 @@ I am the Workspace facade: the operations a programmer performs from a
 Workspace pane, exposed as MCP tools. I hold no state and no window state: every
 message receives what it needs as an argument.!
 
-!MCPServer methodsFor: 'as yet unclassified' stamp: 'S.V. 13/Sep/2026 12:33:13'!
+!MCPServer methodsFor: 'accessing' stamp: 'S.V. 13/Sep/2026 15:47:46'!
 catalogue ^catalogue! !
 
-!MCPServer methodsFor: 'as yet unclassified' stamp: 'S.V. 13/Sep/2026 12:33:13'!
+!MCPServer methodsFor: 'accessing' stamp: 'S.V. 13/Sep/2026 15:47:46'!
+port ^port! !
+
+!MCPServer methodsFor: 'accessing' stamp: 'S.V. 13/Sep/2026 15:47:46'!
+protocol ^ MCPServerProtocol on: catalogue! !
+
+!MCPServer methodsFor: 'starting' stamp: 'S.V. 13/Sep/2026 15:47:46'!
+start
+	"Listen on the given port, loopback only, and serve the MCP endpoint."
+	webServer := WebServer new listenOn: port interface: #(127 0 0 1).
+	webServer addService: '/mcp' action: [ :request | self handleRequest: request ].
+	^ self! !
+
+!MCPServer methodsFor: 'stopping' stamp: 'S.V. 13/Sep/2026 15:47:46'!
 destroy
 	"Stop serving."
 	webServer ifNotNil: [ webServer destroy ].
 	webServer := nil.
 	^ self! !
 
-!MCPServer methodsFor: 'as yet unclassified' stamp: 'S.V. 13/Sep/2026 12:33:39'!
+!MCPServer methodsFor: 'handling' stamp: 'S.V. 13/Sep/2026 12:33:39'!
 handleRequest: aWebRequest
 	| body |
 	body := self handleRequestBody: aWebRequest content.
@@ -166,7 +192,7 @@ handleRequest: aWebRequest
 		ifFalse: [ aWebRequest send200Response: body contentType: 'application/json' ].
 	^ self! !
 
-!MCPServer methodsFor: 'as yet unclassified' stamp: 'S.V. 13/Sep/2026 12:33:13'!
+!MCPServer methodsFor: 'handling' stamp: 'S.V. 13/Sep/2026 12:33:13'!
 handleRequestBody: aString
 	"Answer the response body for a request body, or nil for a notification.
 	Here is where JSON meets the protocol."
@@ -175,33 +201,133 @@ handleRequestBody: aString
 	response ifNil: [ ^ nil ].
 	^ Json render: response! !
 
-!MCPServer methodsFor: 'as yet unclassified' stamp: 'S.V. 13/Sep/2026 12:33:13'!
-port ^port! !
-
-!MCPServer methodsFor: 'as yet unclassified' stamp: 'S.V. 13/Sep/2026 12:33:13'!
-protocol ^ MCPServerProtocol on: catalogue! !
-
-!MCPServer methodsFor: 'as yet unclassified' stamp: 'S.V. 13/Sep/2026 12:33:13'!
+!MCPServer methodsFor: 'private' stamp: 'S.V. 13/Sep/2026 15:47:46'!
 setPort: aPort catalogue: aCatalogue
 	"Private. Instances are created with the class-side factory."
 	port := aPort.
 	catalogue := aCatalogue! !
 
-!MCPServer methodsFor: 'as yet unclassified' stamp: 'S.V. 13/Sep/2026 12:33:13'!
-start
-	"Listen on the given port, loopback only, and serve the MCP endpoint."
-	webServer := WebServer new listenOn: port interface: #(127 0 0 1).
-	webServer addService: '/mcp' action: [ :request | self handleRequest: request ].
-	^ self! !
-
-!MCPServer class methodsFor: 'as yet unclassified' stamp: 'S.V. 13/Sep/2026 12:33:13'!
+!MCPServer class methodsFor: 'instance creation' stamp: 'S.V. 13/Sep/2026 12:33:13'!
 on: aPort tools: aCollectionOfClasses
 	"Answer a server that exposes the tools declared by those classes on that port."
 	^ self new
 		setPort: aPort
 		catalogue: (MCPServerCatalogueBuilder buildFrom: aCollectionOfClasses)! !
 
-!MCPServerCatalogueBuilder class methodsFor: 'as yet unclassified' stamp: 'S.V. 13/Sep/2026 12:12:12'!
+!MCPServerBrowserTools methodsFor: 'accessing' stamp: 'S.V. 13/Sep/2026 15:42:52'!
+allCallsOn: aSelectorString
+	"The senders pane: every method in the image that sends that selector, each one
+	written as the Browser writes a method reference. The first 100 are listed."
+	<mcpTool: #all_calls_on system: 'Browser' arguments: #('selector')>
+	| references out |
+	references := (Smalltalk allCallsOn: aSelectorString asSymbol)
+		asSortedCollection: [ :a :b | a printString <= b printString ].
+	out := WriteStream on: String new.
+	out nextPutAll: references size printString, ' senders of ', aSelectorString; newLine.
+	references asArray withIndexDo: [ :each :index |
+		index > 100 ifTrue: [ ^ out contents ].
+		out nextPutAll: (self referenceStringFor: each); newLine ].
+	^ out contents! !
+
+!MCPServerBrowserTools methodsFor: 'accessing' stamp: 'S.V. 13/Sep/2026 15:42:52'!
+commentOfClass: aClassName
+	"The class comment pane: the comment of the class, which is where the class says
+	what it is for. The class side answers the same comment as the class."
+	<mcpTool: #comment_of_class system: 'Browser' arguments: #('class')>
+	^ (self classNamed: aClassName) comment! !
+
+!MCPServerBrowserTools methodsFor: 'accessing' stamp: 'S.V. 13/Sep/2026 15:42:25'!
+selectorsOfClass: aClassName
+	"The class pane, the protocol pane and the selector pane: the selectors of the
+	class named aClassName, grouped by the method category they are classified under.
+	A name ending in ' class' means the class side, the way the class pane shows it."
+	<mcpTool: #selectors_of_class system: 'Browser' arguments: #('class')>
+	| class out |
+	class := self classNamed: aClassName.
+	out := WriteStream on: String new.
+	self writeSelectorsOf: class on: out.
+	class isMeta ifFalse: [ self writeSelectorsOf: class class on: out ].
+	^ out contents! !
+
+!MCPServerBrowserTools methodsFor: 'accessing' stamp: 'S.V. 13/Sep/2026 15:42:25'!
+sourceOfMethod: aSelectorString inClass: aClassName
+	"The source pane: the source of that method of that class, comment and pragmas
+	included."
+	<mcpTool: #source_of_method_in_class system: 'Browser' arguments: #('selector' 'class')>
+	| class selector |
+	class := self classNamed: aClassName.
+	selector := aSelectorString asSymbol.
+	(class includesSelector: selector) ifFalse: [
+		Error signal: 'No method ', aSelectorString, ' in ', class name ].
+	^ (class compiledMethodAt: selector) sourceCode! !
+
+!MCPServerBrowserTools methodsFor: 'private' stamp: 'S.V. 13/Sep/2026 15:42:25'!
+classNamed: aString
+	"Private. Answer the class named aString, or its metaclass when the name ends in
+	' class': the class pane shows the class side that way."
+	| name class |
+	name := aString asString.
+	(name endsWith: ' class') ifTrue: [
+		^ (self classNamed: (name copyFrom: 1 to: name size - 6)) class ].
+	class := Smalltalk at: name asSymbol ifAbsent: [ nil ].
+	class ifNil: [ Error signal: 'No class named ', name printString ].
+	^ class! !
+
+!MCPServerBrowserTools methodsFor: 'private' stamp: 'S.V. 13/Sep/2026 15:42:52'!
+referenceStringFor: aMethodReference
+	"Private. The method reference as the Browser writes it: the class, the word class
+	when it is the class side, and the selector."
+	^ aMethodReference actualClass name, '>>', aMethodReference selector asString! !
+
+!MCPServerBrowserTools methodsFor: 'private' stamp: 'S.V. 13/Sep/2026 15:44:13'!
+writeSelectorsOf: aClass on: aStream
+	"Private. One line per method category with its selectors: what the protocol pane
+	and the selector pane show. A side without methods says so, instead of showing the
+	empty category the image keeps around."
+	| side wrote |
+	side := aClass isMeta ifTrue: [ 'class side' ] ifFalse: [ 'instance side' ].
+	wrote := false.
+	aClass organization categories asSortedCollection do: [ :category |
+		| selectors |
+		selectors := (aClass organization listAtCategoryNamed: category) asSortedCollection.
+		selectors isEmpty ifFalse: [
+			wrote ifFalse: [
+				aStream nextPutAll: side; nextPut: $:; newLine.
+				wrote := true ].
+			aStream nextPutAll: '  ', category asString, ': '.
+			selectors do: [ :each | aStream nextPutAll: each asString; nextPut: Character space ].
+			aStream newLine ] ].
+	wrote ifFalse: [ aStream nextPutAll: side, ': no methods'; newLine ]! !
+
+!MCPServerBrowserTools methodsFor: 'editing' stamp: 'S.V. 13/Sep/2026 15:43:12'!
+compileMethod: aSourceString inClass: aClassName classified: aCategoryString
+	"The source pane, after accepting: compile that source in that class, under that
+	method category. A source that does not compile answers the syntax error and
+	changes nothing."
+	<mcpTool: #compile_method_in_class_classified system: 'Browser' arguments: #('source' 'class' 'category')>
+	| class selector out |
+	class := self classNamed: aClassName.
+	selector := class compile: aSourceString classified: aCategoryString asSymbol.
+	out := WriteStream on: String new.
+	out nextPutAll: 'Compiled ', class name, '>>', selector asString, ' in category ', aCategoryString, ':'.
+	out newLine.
+	out nextPutAll: (class compiledMethodAt: selector) sourceCode.
+	^ out contents! !
+
+!MCPServerBrowserTools methodsFor: 'editing' stamp: 'S.V. 13/Sep/2026 15:43:12'!
+removeMethod: aSelectorString inClass: aClassName
+	"The Browser remove: take that method out of that class. A selector the class does
+	not understand is said, not removed."
+	<mcpTool: #remove_method_in_class system: 'Browser' arguments: #('selector' 'class')>
+	| class selector |
+	class := self classNamed: aClassName.
+	selector := aSelectorString asSymbol.
+	(class includesSelector: selector) ifFalse: [
+		Error signal: 'No method ', aSelectorString, ' in ', class name ].
+	class removeSelector: selector.
+	^ 'Removed ', aSelectorString, ' from ', class name! !
+
+!MCPServerCatalogueBuilder class methodsFor: 'building' stamp: 'S.V. 13/Sep/2026 12:12:12'!
 buildFrom: aCollectionOfClasses
 	"Answer a catalogue with the tools declared by the pragmas of those classes."
 	| tools |
@@ -215,7 +341,7 @@ buildFrom: aCollectionOfClasses
 				tools at: descriptor name put: (MCPServerTool on: descriptor) ] ] ].
 	^ MCPServerToolCatalogue on: tools! !
 
-!MCPServerMethodComment class methodsFor: 'as yet unclassified' stamp: 'S.V. 13/Sep/2026 12:11:12'!
+!MCPServerMethodComment class methodsFor: 'reading' stamp: 'S.V. 13/Sep/2026 12:11:12'!
 fromSource: aSourceString
 	"Answer the comment of the method whose source is aSourceString, or nil if it has
 	none. By convention the comment is the first quoted text after the message
@@ -230,19 +356,7 @@ fromSource: aSourceString
 	(stream atEnd or: [ (self isQuote: stream peek) not ]) ifTrue: [ ^ nil ].
 	^ self readCommentFrom: stream! !
 
-!MCPServerMethodComment class methodsFor: 'as yet unclassified' stamp: 'S.V. 13/Sep/2026 12:10:58'!
-isBlank: aCharacter
-	^ aCharacter = Character space or: [ aCharacter = Character lf
-		or: [ aCharacter = Character cr or: [ aCharacter = Character tab ] ] ]! !
-
-!MCPServerMethodComment class methodsFor: 'as yet unclassified' stamp: 'S.V. 13/Sep/2026 12:10:58'!
-isLineEnd: aCharacter
-	^ aCharacter = Character lf or: [ aCharacter = Character cr ]! !
-
-!MCPServerMethodComment class methodsFor: 'as yet unclassified' stamp: 'S.V. 13/Sep/2026 12:10:58'!
-isQuote: aCharacter ^ aCharacter = $"! !
-
-!MCPServerMethodComment class methodsFor: 'as yet unclassified' stamp: 'S.V. 13/Sep/2026 12:11:26'!
+!MCPServerMethodComment class methodsFor: 'reading' stamp: 'S.V. 13/Sep/2026 12:11:26'!
 readCommentFrom: aStream
 	"Private. The stream is on the opening quote. Answer the comment text without the
 	quotes, honouring doubled quotes as escaped ones."
@@ -260,43 +374,22 @@ readCommentFrom: aStream
 			ifFalse: [ out nextPut: ch ] ].
 	^ out contents! !
 
-!MCPServerProtocol methodsFor: 'as yet unclassified' stamp: 'S.V. 13/Sep/2026 12:32:32'!
+!MCPServerMethodComment class methodsFor: 'private' stamp: 'S.V. 13/Sep/2026 12:10:58'!
+isBlank: aCharacter
+	^ aCharacter = Character space or: [ aCharacter = Character lf
+		or: [ aCharacter = Character cr or: [ aCharacter = Character tab ] ] ]! !
+
+!MCPServerMethodComment class methodsFor: 'private' stamp: 'S.V. 13/Sep/2026 12:10:58'!
+isLineEnd: aCharacter
+	^ aCharacter = Character lf or: [ aCharacter = Character cr ]! !
+
+!MCPServerMethodComment class methodsFor: 'private' stamp: 'S.V. 13/Sep/2026 12:10:58'!
+isQuote: aCharacter ^ aCharacter = $"! !
+
+!MCPServerProtocol methodsFor: 'accessing' stamp: 'S.V. 13/Sep/2026 12:32:32'!
 catalogue ^catalogue! !
 
-!MCPServerProtocol methodsFor: 'as yet unclassified' stamp: 'S.V. 13/Sep/2026 12:32:32'!
-contentOf: aToolResult
-	| item result |
-	item := Dictionary new.
-	item at: 'type' put: 'text'.
-	item at: 'text' put: aToolResult text.
-	result := Dictionary new.
-	result at: 'content' put: (Array with: item).
-	result at: 'isError' put: aToolResult isError.
-	^ result! !
-
-!MCPServerProtocol methodsFor: 'as yet unclassified' stamp: 'S.V. 13/Sep/2026 12:32:32'!
-descriptionOf: aTool
-	| descriptor description |
-	descriptor := aTool descriptor.
-	description := Dictionary new.
-	description at: 'name' put: descriptor name asString.
-	description at: 'description' put: descriptor description.
-	description at: 'inputSchema' put: (self inputSchemaFor: descriptor).
-	^ description! !
-
-!MCPServerProtocol methodsFor: 'as yet unclassified' stamp: 'S.V. 13/Sep/2026 12:32:32'!
-errorResponseFor: anId code: anInteger message: aString
-	| response error |
-	error := Dictionary new.
-	error at: 'code' put: anInteger.
-	error at: 'message' put: aString.
-	response := Dictionary new.
-	response at: 'jsonrpc' put: '2.0'.
-	response at: 'id' put: anId.
-	response at: 'error' put: error.
-	^ response! !
-
-!MCPServerProtocol methodsFor: 'as yet unclassified' stamp: 'S.V. 13/Sep/2026 12:32:32'!
+!MCPServerProtocol methodsFor: 'handling' stamp: 'S.V. 13/Sep/2026 12:32:32'!
 handleMessage: aMessage
 	"Answer the response for the message, or nil if it is a notification (no id)."
 	| method id |
@@ -313,7 +406,58 @@ handleMessage: aMessage
 		ifTrue: [ ^ self resultResponseFor: id result: Dictionary new ].
 	^ self errorResponseFor: id code: -32601 message: 'Method not found: ', method printString! !
 
-!MCPServerProtocol methodsFor: 'as yet unclassified' stamp: 'S.V. 13/Sep/2026 12:32:32'!
+!MCPServerProtocol methodsFor: 'handling' stamp: 'S.V. 13/Sep/2026 12:32:32'!
+toolsCallResponseFor: anId params: aParams
+	| tool |
+	tool := catalogue toolNamed: (aParams at: 'name' ifAbsent: [ '' ]) asSymbol.
+	tool ifNil: [
+		^ self errorResponseFor: anId code: -32602
+			message: 'Unknown tool: ', (aParams at: 'name' ifAbsent: [ '' ]) ].
+	^ self resultResponseFor: anId
+		result: (self contentOf: (tool executeWith: (self valuesFor: tool from: aParams)))! !
+
+!MCPServerProtocol methodsFor: 'handling' stamp: 'S.V. 13/Sep/2026 12:32:32'!
+valuesFor: aTool from: aParams
+	"Answer the values in the order the declared arguments say."
+	| arguments |
+	arguments := aParams at: 'arguments' ifAbsent: [ Dictionary new ].
+	^ aTool descriptor argumentNames
+		collect: [ :each | arguments at: each ifAbsent: [ nil ] ]! !
+
+!MCPServerProtocol methodsFor: 'answers' stamp: 'S.V. 13/Sep/2026 12:32:32'!
+contentOf: aToolResult
+	| item result |
+	item := Dictionary new.
+	item at: 'type' put: 'text'.
+	item at: 'text' put: aToolResult text.
+	result := Dictionary new.
+	result at: 'content' put: (Array with: item).
+	result at: 'isError' put: aToolResult isError.
+	^ result! !
+
+!MCPServerProtocol methodsFor: 'answers' stamp: 'S.V. 13/Sep/2026 12:32:32'!
+descriptionOf: aTool
+	| descriptor description |
+	descriptor := aTool descriptor.
+	description := Dictionary new.
+	description at: 'name' put: descriptor name asString.
+	description at: 'description' put: descriptor description.
+	description at: 'inputSchema' put: (self inputSchemaFor: descriptor).
+	^ description! !
+
+!MCPServerProtocol methodsFor: 'answers' stamp: 'S.V. 13/Sep/2026 12:32:32'!
+errorResponseFor: anId code: anInteger message: aString
+	| response error |
+	error := Dictionary new.
+	error at: 'code' put: anInteger.
+	error at: 'message' put: aString.
+	response := Dictionary new.
+	response at: 'jsonrpc' put: '2.0'.
+	response at: 'id' put: anId.
+	response at: 'error' put: error.
+	^ response! !
+
+!MCPServerProtocol methodsFor: 'answers' stamp: 'S.V. 13/Sep/2026 12:32:32'!
 initializeResult
 	| result capabilities serverInfo |
 	capabilities := Dictionary new.
@@ -327,7 +471,7 @@ initializeResult
 	result at: 'serverInfo' put: serverInfo.
 	^ result! !
 
-!MCPServerProtocol methodsFor: 'as yet unclassified' stamp: 'S.V. 13/Sep/2026 12:32:32'!
+!MCPServerProtocol methodsFor: 'answers' stamp: 'S.V. 13/Sep/2026 12:32:32'!
 inputSchemaFor: aDescriptor
 	| schema properties |
 	properties := Dictionary new.
@@ -342,7 +486,7 @@ inputSchemaFor: aDescriptor
 	schema at: 'required' put: aDescriptor argumentNames asArray.
 	^ schema! !
 
-!MCPServerProtocol methodsFor: 'as yet unclassified' stamp: 'S.V. 13/Sep/2026 12:32:32'!
+!MCPServerProtocol methodsFor: 'answers' stamp: 'S.V. 13/Sep/2026 12:32:32'!
 resultResponseFor: anId result: aDictionary
 	| response |
 	response := Dictionary new.
@@ -351,43 +495,25 @@ resultResponseFor: anId result: aDictionary
 	response at: 'result' put: aDictionary.
 	^ response! !
 
-!MCPServerProtocol methodsFor: 'as yet unclassified' stamp: 'S.V. 13/Sep/2026 12:32:32'!
-setCatalogue: aCatalogue
-	"Private. Instances are created with the class-side factory."
-	catalogue := aCatalogue! !
-
-!MCPServerProtocol methodsFor: 'as yet unclassified' stamp: 'S.V. 13/Sep/2026 12:32:32'!
-toolsCallResponseFor: anId params: aParams
-	| tool |
-	tool := catalogue toolNamed: (aParams at: 'name' ifAbsent: [ '' ]) asSymbol.
-	tool ifNil: [
-		^ self errorResponseFor: anId code: -32602
-			message: 'Unknown tool: ', (aParams at: 'name' ifAbsent: [ '' ]) ].
-	^ self resultResponseFor: anId
-		result: (self contentOf: (tool executeWith: (self valuesFor: tool from: aParams)))! !
-
-!MCPServerProtocol methodsFor: 'as yet unclassified' stamp: 'S.V. 13/Sep/2026 12:32:32'!
+!MCPServerProtocol methodsFor: 'answers' stamp: 'S.V. 13/Sep/2026 12:32:32'!
 toolsListResult
 	| result |
 	result := Dictionary new.
 	result at: 'tools' put: (catalogue tools collect: [ :each | self descriptionOf: each ]).
 	^ result! !
 
-!MCPServerProtocol methodsFor: 'as yet unclassified' stamp: 'S.V. 13/Sep/2026 12:32:32'!
-valuesFor: aTool from: aParams
-	"Answer the values in the order the declared arguments say."
-	| arguments |
-	arguments := aParams at: 'arguments' ifAbsent: [ Dictionary new ].
-	^ aTool descriptor argumentNames
-		collect: [ :each | arguments at: each ifAbsent: [ nil ] ]! !
+!MCPServerProtocol methodsFor: 'private' stamp: 'S.V. 13/Sep/2026 12:32:32'!
+setCatalogue: aCatalogue
+	"Private. Instances are created with the class-side factory."
+	catalogue := aCatalogue! !
 
-!MCPServerProtocol class methodsFor: 'as yet unclassified' stamp: 'S.V. 13/Sep/2026 12:32:32'!
+!MCPServerProtocol class methodsFor: 'instance creation' stamp: 'S.V. 13/Sep/2026 12:32:32'!
 on: aCatalogue ^ self new setCatalogue: aCatalogue! !
 
-!MCPServerTool methodsFor: 'as yet unclassified' stamp: 'S.V. 13/Sep/2026 12:11:45'!
+!MCPServerTool methodsFor: 'accessing' stamp: 'S.V. 13/Sep/2026 12:11:45'!
 descriptor ^descriptor! !
 
-!MCPServerTool methodsFor: 'as yet unclassified' stamp: 'S.V. 13/Sep/2026 12:12:40'!
+!MCPServerTool methodsFor: 'running' stamp: 'S.V. 13/Sep/2026 12:12:40'!
 executeWith: anArrayOfValues
 	"Answer the MCPServerToolResult of running this tool with the given values.
 	A failing expression answers an error result instead of letting the exception
@@ -403,54 +529,57 @@ executeWith: anArrayOfValues
 		on: Error
 		do: [ :e | MCPServerToolResult text: e class name, ': ', e messageText isError: true ]! !
 
-!MCPServerTool methodsFor: 'as yet unclassified' stamp: 'S.V. 13/Sep/2026 12:11:45'!
+!MCPServerTool methodsFor: 'private' stamp: 'S.V. 13/Sep/2026 12:11:45'!
 setDescriptor: aDescriptor
 	"Private. Instances are created with the class-side factory."
 	descriptor := aDescriptor! !
 
-!MCPServerTool class methodsFor: 'as yet unclassified' stamp: 'S.V. 13/Sep/2026 12:11:45'!
+!MCPServerTool class methodsFor: 'instance creation' stamp: 'S.V. 13/Sep/2026 12:11:45'!
 on: aDescriptor
 	^ self new setDescriptor: aDescriptor! !
 
-!MCPServerToolCatalogue methodsFor: 'as yet unclassified' stamp: 'S.V. 13/Sep/2026 12:12:12'!
-setTools: aDictionary
-	"Private."
-	tools := aDictionary! !
-
-!MCPServerToolCatalogue methodsFor: 'as yet unclassified' stamp: 'S.V. 13/Sep/2026 12:12:12'!
+!MCPServerToolCatalogue methodsFor: 'accessing' stamp: 'S.V. 13/Sep/2026 12:12:12'!
 size ^tools size! !
 
-!MCPServerToolCatalogue methodsFor: 'as yet unclassified' stamp: 'S.V. 13/Sep/2026 12:12:12'!
+!MCPServerToolCatalogue methodsFor: 'accessing' stamp: 'S.V. 13/Sep/2026 12:12:12'!
 toolNamed: aSymbol
 	"Answer the tool with that name, or nil."
 	^ tools at: aSymbol ifAbsent: [ nil ]! !
 
-!MCPServerToolCatalogue methodsFor: 'as yet unclassified' stamp: 'S.V. 13/Sep/2026 12:32:32'!
+!MCPServerToolCatalogue methodsFor: 'accessing' stamp: 'S.V. 13/Sep/2026 12:32:32'!
 tools
 	"Answer the tools, ordered by exposed name: the catalogue is a value, so its
 	enumeration must be stable."
 	^ (tools values asSortedCollection: [ :a :b | a descriptor name <= b descriptor name ]) asArray! !
 
-!MCPServerToolCatalogue class methodsFor: 'as yet unclassified' stamp: 'S.V. 13/Sep/2026 12:12:12'!
+!MCPServerToolCatalogue methodsFor: 'private' stamp: 'S.V. 13/Sep/2026 12:12:12'!
+setTools: aDictionary
+	"Private."
+	tools := aDictionary! !
+
+!MCPServerToolCatalogue class methodsFor: 'instance creation' stamp: 'S.V. 13/Sep/2026 12:12:12'!
 on: aDictionary
 	"Private. Instances are created by the builder."
 	^ self new setTools: aDictionary! !
 
-!MCPServerToolDescriptor methodsFor: 'as yet unclassified' stamp: 'S.V. 13/Sep/2026 12:10:08'!
+!MCPServerToolDescriptor methodsFor: 'accessing' stamp: 'S.V. 13/Sep/2026 12:10:08'!
 argumentNames ^argumentNames! !
 
-!MCPServerToolDescriptor methodsFor: 'as yet unclassified' stamp: 'S.V. 13/Sep/2026 12:10:58'!
+!MCPServerToolDescriptor methodsFor: 'accessing' stamp: 'S.V. 13/Sep/2026 12:10:08'!
+methodReference ^methodReference! !
+
+!MCPServerToolDescriptor methodsFor: 'accessing' stamp: 'S.V. 13/Sep/2026 12:10:08'!
+name ^name! !
+
+!MCPServerToolDescriptor methodsFor: 'accessing' stamp: 'S.V. 13/Sep/2026 12:10:08'!
+system ^system! !
+
+!MCPServerToolDescriptor methodsFor: 'describing' stamp: 'S.V. 13/Sep/2026 12:10:58'!
 description
 	"Answer the tool description: the comment of the method that implements it."
 	^ MCPServerMethodComment fromSource: methodReference sourceCode! !
 
-!MCPServerToolDescriptor methodsFor: 'as yet unclassified' stamp: 'S.V. 13/Sep/2026 12:10:08'!
-methodReference ^methodReference! !
-
-!MCPServerToolDescriptor methodsFor: 'as yet unclassified' stamp: 'S.V. 13/Sep/2026 12:10:08'!
-name ^name! !
-
-!MCPServerToolDescriptor methodsFor: 'as yet unclassified' stamp: 'S.V. 13/Sep/2026 12:10:08'!
+!MCPServerToolDescriptor methodsFor: 'private' stamp: 'S.V. 13/Sep/2026 12:10:08'!
 setName: aSymbol system: aString argumentNames: anArray methodReference: aMethodReference
 	"Private. Instances are created by the class-side factory."
 	name := aSymbol.
@@ -458,10 +587,7 @@ setName: aSymbol system: aString argumentNames: anArray methodReference: aMethod
 	argumentNames := anArray.
 	methodReference := aMethodReference! !
 
-!MCPServerToolDescriptor methodsFor: 'as yet unclassified' stamp: 'S.V. 13/Sep/2026 12:10:08'!
-system ^system! !
-
-!MCPServerToolDescriptor class methodsFor: 'as yet unclassified' stamp: 'S.V. 13/Sep/2026 12:10:08'!
+!MCPServerToolDescriptor class methodsFor: 'instance creation' stamp: 'S.V. 13/Sep/2026 12:10:08'!
 forMethod: aCompiledMethod
 	"Answer the descriptor of the tool the method declares with its mcpTool pragma,
 	or nil if the method declares no tool."
@@ -474,7 +600,7 @@ forMethod: aCompiledMethod
 		argumentNames: (pragma argumentAt: 3)
 		methodReference: (MethodReference method: aCompiledMethod)! !
 
-!MCPServerToolDescriptor class methodsFor: 'as yet unclassified' stamp: 'S.V. 13/Sep/2026 12:10:08'!
+!MCPServerToolDescriptor class methodsFor: 'private' stamp: 'S.V. 13/Sep/2026 12:10:08'!
 mcpToolPragmaIn: aCompiledMethod
 	"Answer the tool declaration pragma of the method, or nil. The keyword is
 	matched by prefix so the declaration can grow without breaking this."
@@ -482,23 +608,23 @@ mcpToolPragmaIn: aCompiledMethod
 		detect: [ :p | (p keyword asString beginsWith: 'mcpTool') ]
 		ifNone: [ nil ]! !
 
-!MCPServerToolResult methodsFor: 'as yet unclassified' stamp: 'S.V. 13/Sep/2026 12:11:45'!
+!MCPServerToolResult methodsFor: 'accessing' stamp: 'S.V. 13/Sep/2026 12:11:45'!
 isError ^isError! !
 
-!MCPServerToolResult methodsFor: 'as yet unclassified' stamp: 'S.V. 13/Sep/2026 12:11:45'!
+!MCPServerToolResult methodsFor: 'accessing' stamp: 'S.V. 13/Sep/2026 12:11:45'!
+text ^text! !
+
+!MCPServerToolResult methodsFor: 'private' stamp: 'S.V. 13/Sep/2026 12:11:45'!
 setText: aString isError: aBoolean
 	"Private. Instances are created with the class-side factory."
 	text := aString.
 	isError := aBoolean! !
 
-!MCPServerToolResult methodsFor: 'as yet unclassified' stamp: 'S.V. 13/Sep/2026 12:11:45'!
-text ^text! !
-
-!MCPServerToolResult class methodsFor: 'as yet unclassified' stamp: 'S.V. 13/Sep/2026 12:11:45'!
+!MCPServerToolResult class methodsFor: 'instance creation' stamp: 'S.V. 13/Sep/2026 12:11:45'!
 text: aString isError: aBoolean
 	^ self new setText: aString isError: aBoolean! !
 
-!MCPServerWorkspaceTools methodsFor: 'as yet unclassified' stamp: 'S.V. 13/Sep/2026 12:09:50'!
+!MCPServerWorkspaceTools methodsFor: 'evaluating' stamp: 'S.V. 13/Sep/2026 12:09:50'!
 printIt: aCodeString
 	"Evaluate aCodeString and answer the printed representation of the result, the
 	way the Workspace print-it does. The output is limited to 10000 characters,

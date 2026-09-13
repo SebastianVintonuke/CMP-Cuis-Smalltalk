@@ -1,4 +1,7 @@
-# Traza TDD: la herramienta `print_it`
+# Traza TDD
+
+La traza de los ciclos: rojo, verde y qué quedó implementado. Empieza con `print_it`
+y sigue con el flujo MCP y las herramientas del Browser.
 
 Registro del orden en que se escribieron los tests y qué se implementó en cada
 paso. Trabajo hecho **sobre la imagen viva** (Cuis 7.8, categoría `MCPServer`),
@@ -130,10 +133,64 @@ así que el endpoint devolvía 500. Los tests unitarios no lo cubrían porque ll
 `handleRequestBody:` directo, sin pasar por el pedido HTTP. Se arregló con
 `isNil ifTrue:ifFalse:`.
 
+## Las herramientas del Browser (ciclos 17 a 21)
+
+Con `print_it` andando, el paso siguiente fue el Browser: las operaciones que un
+programador hace desde sus paneles. La fachada es `MCPServerBrowserTools`, y sus
+herramientas escriben en la imagen, así que los tests compilan y borran métodos en una
+clase de trabajo (`MCPServerBrowserToolsScratch`), nunca en el código real.
+
+| # | Test | Rojo | Verde | Qué se implementó |
+| --- | --- | --- | --- | --- |
+| 17 | los selectores de una clase (los dos lados, por categoría de método), la fuente de un método y el lado de clase dicho con el nombre (`Foo class`) | la clase no existía (`UndefinedObject>>new`) | 3/3 | `selectorsOfClass:`, `sourceOfMethod:inClass:` |
+| 18 | el comentario de clase, los remitentes de un selector y las guardas de error (clase o selector que no existen) | `MCPServerBrowserTools>>commentOfClass:` | 7/7 | `commentOfClass:`, `allCallsOn:` |
+| 19 | compilar y remover un método | `MCPServerBrowserTools>>compileMethod:inClass:classified:` | 11/11 | `compileMethod:inClass:classified:`, `removeMethod:inClass:` |
+| 20 | el lado sin métodos no dice `as yet unclassified` (lo encontró el e2e) | 1 fallo | 12/12 | el lado vacío dice `no methods` |
+| 21 | dos servidores no comparten el estado (lo encontró el e2e) | 1 fallo | 31/31 | las variables de instancia de `MCPServer`, declaradas y recompiladas |
+
+Y las siete herramientas, con la ventana de la que vienen (el `system` del pragma):
+
+| Tool | Ventana | Qué hace |
+| --- | --- | --- |
+| `print_it` | Workspace | evalúa el código y contesta el resultado impreso |
+| `selectors_of_class` | Browser | los selectores de la clase, por categoría de método, los dos lados |
+| `source_of_method_in_class` | Browser | la fuente del método, con su comentario y sus pragmas |
+| `comment_of_class` | Browser | el comentario de la clase |
+| `all_calls_on` | Browser | quién manda ese selector, escrito como `Clase>>selector` |
+| `compile_method_in_class_classified` | Browser | compila la fuente en la clase, bajo esa categoría |
+| `remove_method_in_class` | Browser | saca el método de la clase |
+
+### Lo que encontró el e2e (y los tests no)
+
+1. **`MCPServer` no tenía variables de instancia.** Los ocho métodos de la clase
+   asignaban `port`, `catalogue` y `webServer` como variables *no declaradas*, y el
+   compilador las mandó a `Undeclared`: eran globales, compartidas por todas las
+   instancias. Por eso el servidor de demo terminaba contestando con el catálogo del
+   último servidor creado (`tools/list` devolvía una sola herramienta después de correr
+   los tests). Los tests no lo veían porque cada uno crea un servidor y nunca compara
+   dos. Se arregló declarando las variables, recompilando los métodos de la clase y
+   borrando los bindings viejos de `Undeclared`; el test que lo cubre es el 21.
+   El síntoma parecía un problema del `WebServer`; era un `instanceVariableNames: ''`
+   en la definición de la clase.
+2. **El lado sin métodos decía `as yet unclassified`**: la imagen deja esa categoría
+   vacía en el lado de clase sin métodos (ciclo 20).
+
+### Hallazgos del entorno (los nuevos)
+
+- **Un `MessageNotUnderstood` dentro de un test escapa del runner de SUnit**: los
+  ciclos rojos no dan `errors=1`, abortan la corrida entera (los fallos de aserción sí
+  se cuentan). Por eso las corridas en rojo se envuelven en un `on: Error do:`.
+- **`listenOn:interface:` avisa cuando el puerto está tomado** (`Error: Failed to
+  listen(interface: #(127 0 0 1) port: 8792 )`); no falla en silencio.
+- **`destroy` libera el puerto**: se puede volver a levantar el servidor en el mismo puerto.
+- **`MethodReference>>actualClass name` del lado de clase ya dice `Foo class`**, así que
+  las referencias se escriben como las escribe el Browser, sin armar el nombre a mano.
+
 ## File out
 
-Quedaron `src/MCPServer.pck.st` (9 clases de producción) y
-`src/MCPServerTest.pck.st` (7 clases de test). El paquete declara su dependencia
+Quedaron `src/MCPServer.pck.st` (10 clases de producción) y
+`src/MCPServerTest.pck.st` (9 clases de test: una por clase bajo prueba, más la clase
+de trabajo de los tests). El paquete declara su dependencia
 como los de Cuis: `!requires: 'JSON' 1 0 nil!`, más su descripción. Dos detalles:
 `writeStreamDo:` no pisa un archivo existente (hay que borrarlo antes de
 regenerar), y `MCPServerTest` (la clase) tuvo que moverse a la categoría
@@ -142,7 +199,8 @@ regenerar), y `MCPServerTest` (la clase) tuvo que moverse a la categoría
 ## Lo que falta
 
 1. **Cancelación** (`notifications/cancelled`): decidida, sin implementar.
-2. **Decorador de versión** (compare-and-set) en las herramientas que escriben.
+2. **Decorador de versión** (compare-and-set) en las herramientas que escriben: hoy
+   `compile_method_in_class_classified` y `remove_method_in_class` escriben sin guarda.
 3. **Proceso trabajador de prioridad baja**: decidido, sin implementar.
 4. **Sesiones MCP**: hoy el servidor es sin estado, no recuerda el `protocolVersion`
    negociado (alcanza para el Inspector; no para sesiones con estado).

@@ -59,6 +59,10 @@ headless aparte.
   se apaga con `destroy`, que libera el puerto.
 - **Dependencias declaradas**: `MCPServer` pide `WebClient` y `JSON`, y el paquete de
   tests pide `MCPServer`, así que `Feature require: 'MCPServer'` trae todo.
+- **Los cambios del agente van firmados**: al arrancar, el servidor se pone de autor
+  `MCP(<iniciales del dueño de la imagen>)` —por ejemplo `MCP(S.V.)`—, así que en el
+  `ChangeSorter`, en el `.changes` y en el file out se distingue lo que escribió el
+  agente de lo que escribiste vos.
 - **El ciclo de trabajo se hace por MCP**: leer, escribir, correr los tests y exportar,
   todo a través del servidor. No hace falta ningún endpoint aparte en la imagen.
 - La traza del trabajo TDD (los 21 ciclos, los rojos y verdes, lo que encontró el

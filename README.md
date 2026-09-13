@@ -49,7 +49,8 @@ headless aparte.
     `all_calls_on`, `all_implementors_of`, `hierarchy_of_class`,
     `compile_method_in_class_classified`, `remove_method_in_class`,
     `classify_method_in_class_under`, `file_out_package_to`, `classes_in_category`,
-    `classes_matching` y `methods_containing`.
+    `classes_matching`, `methods_containing`, `define_class_subclass_of_variables_category`,
+    `remove_class` y `rename_class_to`.
   - *Test Runner*: `run_tests_in_class` y `run_tests_in_category`.
 
   Cada herramienta se declara con un pragma, su descripción es el comentario del método

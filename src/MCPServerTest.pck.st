@@ -132,6 +132,18 @@ I test the tool as a command: running it and answering a result.!
 !MCPServerWorkspaceToolsTest commentStamp: '<historical>' prior: 0!
 I test the Workspace facade: the operations it exposes as tools.!
 
+!MCPServerBrowserToolsTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 20:57:00'!
+tearDown
+	"The tests define and remove methods and classes in the scratch class: leave it clean."
+	| scratch |
+	#(#MCPPruebaDeClase #MCPPruebaRenombrada) do: [ :name |
+		(Smalltalk at: name ifAbsent: [ nil ]) ifNotNil: [ :each | each removeFromSystem ] ].
+	scratch := Smalltalk at: #MCPServerBrowserToolsScratch ifAbsent: [ nil ].
+	scratch ifNil: [ ^ self ].
+	#(#zap) do: [ :each |
+		(scratch includesSelector: each) ifTrue: [ scratch removeSelector: each ] ]
+! !
+
 !MCPServerBrowserToolsTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 15:41:59'!
 test01AnswersTheSelectorsOfBothSides
 	"The class pane, the protocol pane and the selector pane: the selectors of the
@@ -310,14 +322,56 @@ test20AnswersTheMethodsContainingSomeText
 	text := MCPServerBrowserTools new methodsContaining: 'printStringLimitedTo:'.
 	self assert: (text findString: 'MCPServerWorkspaceTools>>printIt:') > 0! !
 
-!MCPServerBrowserToolsTest methodsFor: 'private' stamp: 'S.V. 13/Sep/2026 15:43:07'!
-tearDown
-	"The tests define and remove methods in the scratch class: leave it clean."
-	| scratch |
-	scratch := Smalltalk at: #MCPServerBrowserToolsScratch ifAbsent: [ nil ].
-	scratch ifNil: [ ^ self ].
-	#(#zap) do: [ :each |
-		(scratch includesSelector: each) ifTrue: [ scratch removeSelector: each ] ]! !
+!MCPServerBrowserToolsTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 20:57:00'!
+test21DefinesAClass
+	"The class pane can create a class: name, superclass, instance variables and category."
+	| class |
+	MCPServerBrowserTools new
+		defineClass: 'MCPPruebaDeClase'
+		subclassOf: 'Object'
+		variables: 'x y'
+		category: 'MCPServerTest'.
+	class := Smalltalk at: #MCPPruebaDeClase.
+	self assert: class superclass name equals: 'Object'.
+	self assert: class instVarNames asArray equals: #(#x #y).
+	self assert: class category equals: #MCPServerTest
+! !
+
+!MCPServerBrowserToolsTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 20:57:00'!
+test22RefusesToDefineAClassThatAlreadyExists
+	"Defining does not redefine: a class that is already there is said, not overwritten."
+	self should: [ MCPServerBrowserTools new
+		defineClass: 'MCPServer'
+		subclassOf: 'Object'
+		variables: ''
+		category: 'MCPServer' ] raise: Error
+! !
+
+!MCPServerBrowserToolsTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 20:57:00'!
+test23RemovesAClass
+	"The class pane can remove a class."
+	MCPServerBrowserTools new
+		defineClass: 'MCPPruebaDeClase'
+		subclassOf: 'Object'
+		variables: ''
+		category: 'MCPServerTest'.
+	MCPServerBrowserTools new removeClass: 'MCPPruebaDeClase'.
+	self deny: (Smalltalk includesKey: #MCPPruebaDeClase)
+! !
+
+!MCPServerBrowserToolsTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 20:57:00'!
+test24RenamesAClass
+	"The class pane can rename a class, keeping its category."
+	MCPServerBrowserTools new
+		defineClass: 'MCPPruebaDeClase'
+		subclassOf: 'Object'
+		variables: ''
+		category: 'MCPServerTest'.
+	MCPServerBrowserTools new renameClass: 'MCPPruebaDeClase' to: 'MCPPruebaRenombrada'.
+	self assert: (Smalltalk includesKey: #MCPPruebaRenombrada).
+	self deny: (Smalltalk includesKey: #MCPPruebaDeClase).
+	self assert: (Smalltalk at: #MCPPruebaRenombrada) category equals: #MCPServerTest
+! !
 
 !MCPServerMethodCommentTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 12:31:29'!
 test01AnswersTheCommentOfAMethodSource

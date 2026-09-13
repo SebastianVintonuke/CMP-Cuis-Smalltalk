@@ -466,6 +466,37 @@ compileMethod: aSourceString inClass: aClassName classified: aCategoryString
 	out nextPutAll: (class compiledMethodAt: selector) sourceCode.
 	^ out contents! !
 
+!MCPServerBrowserTools methodsFor: 'editing' stamp: 'S.V. 13/Sep/2026 20:57:19'!
+defineClass: aClassName subclassOf: aSuperclassName variables: aVariableNames category: aCategoryName
+	"The class pane, creating a class: its name, its superclass, its instance variables and
+	its system category. A class that is already there is said, not redefined: this defines."
+	<mcpTool: #define_class_subclass_of_variables_category system: 'Browser' arguments: #('class' 'superclass' 'variables' 'category')>
+	| superclass |
+	(Smalltalk includesKey: aClassName asSymbol) ifTrue: [
+		Error signal: 'Already a class named ', aClassName ].
+	superclass := MCPServerEnvironment classNamed: aSuperclassName.
+	superclass
+		subclass: aClassName asSymbol
+		instanceVariableNames: aVariableNames
+		classVariableNames: ''
+		poolDictionaries: ''
+		category: aCategoryName asSymbol.
+	^ 'Defined ', aClassName, ' as a subclass of ', aSuperclassName
+! !
+
+!MCPServerBrowserTools methodsFor: 'editing' stamp: 'S.V. 13/Sep/2026 20:57:19'!
+removeClass: aClassName
+	"The class pane, removing a class: it goes out of the image with its methods. A class
+	that is not there is said."
+	<mcpTool: #remove_class system: 'Browser' arguments: #('class')>
+	| class |
+	(Smalltalk includesKey: aClassName asSymbol) ifFalse: [
+		Error signal: 'No class named ', aClassName ].
+	class := MCPServerEnvironment classNamed: aClassName.
+	class removeFromSystem.
+	^ 'Removed ', aClassName
+! !
+
 !MCPServerBrowserTools methodsFor: 'editing' stamp: 'S.V. 13/Sep/2026 18:58:42'!
 removeMethod: aSelectorString inClass: aClassName
 	"The Browser remove: take that method out of that class. A selector the class does
@@ -478,6 +509,19 @@ removeMethod: aSelectorString inClass: aClassName
 		Error signal: 'No method ', aSelectorString, ' in ', class name ].
 	class removeSelector: selector.
 	^ 'Removed ', aSelectorString, ' from ', class name! !
+
+!MCPServerBrowserTools methodsFor: 'editing' stamp: 'S.V. 13/Sep/2026 20:57:19'!
+renameClass: aClassName to: aNewName
+	"The class pane, renaming a class: the references to the global follow and its category
+	stays. A name that is taken is said."
+	<mcpTool: #rename_class_to system: 'Browser' arguments: #('class' 'newName')>
+	(Smalltalk includesKey: aClassName asSymbol) ifFalse: [
+		Error signal: 'No class named ', aClassName ].
+	(Smalltalk includesKey: aNewName asSymbol) ifTrue: [
+		Error signal: 'Already a class named ', aNewName ].
+	Smalltalk renameClassNamed: aClassName asSymbol as: aNewName asSymbol.
+	^ 'Renamed ', aClassName, ' to ', aNewName
+! !
 
 !MCPServerBrowserTools methodsFor: 'file out' stamp: 'S.V. 13/Sep/2026 18:59:32'!
 fileOutPackage: aCategoryName to: aFilePath

@@ -338,9 +338,35 @@ Las herramientas que faltaban para completar el catálogo del Browser.
 | --- | --- | --- | --- | --- |
 | 32 | las clases de una categoría, la búsqueda de clases y la búsqueda de texto en los métodos | `MCPServerBrowserTools>>classesInCategory:` | 44/44 | `classesInCategory:`, `classesMatching:` y `methodsContaining:`; y el listado acotado, que ya estaba duplicado en dos métodos, se extrajo a `writeLinesFor:labelled:on:` |
 
+| 33 | crear una clase (y negarse a redefinir), borrarla y renombrarla | `MCPServerBrowserTools>>defineClass:subclassOf:variables:category:` | 48/48 | `defineClass:subclassOf:variables:category:`, `removeClass:` y `renameClass:to:` |
+
 De paso se midió lo que cuesta la búsqueda de texto: **18.224 métodos en 2,5 segundos**, con las
 fuentes leídas una por una. Es aceptable para una herramienta y para un test, y es el dato que
 fija el techo de esa búsqueda.
+
+### El renombre de un método: no hay herramienta, y por qué
+
+Renombrar una **clase** sí se puede en Cuis (`Smalltalk renameClassNamed:as:`, que actualiza las
+referencias al global). Renombrar un **selector** no tiene API sin interfaz: la implementación
+vive en `Browser>>renameSelector` y en el editor, y pasa por `RefactoringApplier` con el texto del
+editor. El objeto `RenameSelector` es sólo una mezcla de ayuda.
+
+Hacerlo a mano significa reescribir las fuentes de todos los remitentes, y eso, con selectores de
+varios keywords, envíos anidados y literales con texto adentro, es exactamente el tipo de
+media-medida que se rompe en silencio. Es el mismo criterio con el que descartamos el `restart` de
+puertos: no hacemos una versión manual de algo que la ventana hace bien.
+
+Queda la receta segura, con lo que ya hay: si el selector **no tiene remitentes**, renombrarlo son
+dos herramientas que existen (compilar el método nuevo con el mismo cuerpo y remover el viejo, y
+`all_calls_on` dice si tiene remitentes). Si los tiene, el renombre se hace en el Browser, con el
+humano, que es donde Cuis lo puede hacer sin romper nada.
+
+### Los tests se escriben en archivos
+
+Los cuerpos de los tests van a **archivos** que la imagen lee tal cual (`compile: source`), en vez
+de ir como texto anidado dentro de un pedido. Dos veces hoy me mordieron las comillas dobles al
+anidar: un test se compiló a medias y el pedido contestó `nil` sin decir nada. El archivo evita el
+problema de raíz, y de paso deja los tests en algo que se puede leer y revisar.
 
 ## File out
 

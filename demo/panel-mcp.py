@@ -39,8 +39,9 @@ PAGE = """<!doctype html>
   .sub { opacity: .7; font-size: 13px; margin-bottom: 18px; }
   .tool { border: 1px solid #8884; border-radius: 8px; padding: 14px 16px; margin-bottom: 14px; }
   .tool h2 { font-size: 15px; margin: 0 0 6px; font-family: ui-monospace, monospace; }
-  .tool h2 .badge { font-size: 11px; font-weight: 400; opacity: .75; border: 1px solid #8886;
-                    border-radius: 10px; padding: 1px 7px; margin-left: 6px; vertical-align: middle; }
+  details.group { border: 1px solid #8884; border-radius: 8px; margin-bottom: 16px; padding: 8px 12px; }
+  details.group > summary { cursor: pointer; font-size: 14px; font-weight: 600; padding: 4px 2px; }
+  details.group > summary .count { opacity: .6; font-weight: 400; }
   .desc { white-space: pre-wrap; opacity: .8; font-size: 13px; margin-bottom: 10px; }
   label { display: block; font-size: 12px; opacity: .75; margin: 8px 0 3px; }
   input, textarea { width: 100%; box-sizing: border-box; font-family: ui-monospace, monospace;
@@ -78,7 +79,7 @@ async function load() {
     const data = await r.json();
     if (!r.ok) throw new Error(data.error || r.statusText);
     sub.textContent = data.length + (data.length === 1 ? ' tool' : ' tools') + ' on port __PORT__';
-    data.forEach(t => tools.appendChild(card(t)));
+    render(data);
   } catch (e) {
     sub.textContent = 'not connected';
     tools.innerHTML = '<pre class="err">Could not read the tool list: ' + e.message +
@@ -86,19 +87,38 @@ async function load() {
       'MCPServer on: __PORT__ tools: { ... } then start.</pre>';
   }
 }
+function render(tools) {
+  // Una ventana por item colapsable, y adentro las herramientas que vienen de ahi.
+  const box = document.getElementById('tools');
+  const groups = new Map();
+  tools.forEach(t => {
+    const system = (t._meta && t._meta.system) || 'Other';
+    if (!groups.has(system)) groups.set(system, []);
+    groups.get(system).push(t);
+  });
+  box.innerHTML = '';
+  Array.from(groups.keys()).sort().forEach(system => {
+    const list = groups.get(system);
+    const group = document.createElement('details');
+    group.className = 'group';
+    group.open = true;
+    const summary = document.createElement('summary');
+    summary.textContent = system + ' ';
+    const count = document.createElement('span');
+    count.className = 'count';
+    count.textContent = '(' + list.length + ')';
+    summary.appendChild(count);
+    group.appendChild(summary);
+    list.forEach(t => group.appendChild(card(t)));
+    box.appendChild(group);
+  });
+}
 function card(t) {
   const box = document.createElement('div');
   box.className = 'tool';
   const props = (t.inputSchema && t.inputSchema.properties) || {};
   const h = document.createElement('h2');
-  h.textContent = t.name + ' ';
-  const system = (t._meta && t._meta.system) || '';
-  if (system) {
-    const badge = document.createElement('span');
-    badge.className = 'badge';
-    badge.textContent = system;
-    h.appendChild(badge);
-  }
+  h.textContent = t.name;
   box.appendChild(h);
   const d = document.createElement('div');
   d.className = 'desc';

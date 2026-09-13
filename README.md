@@ -172,6 +172,23 @@ headless aparte.
     entrada y el timer de `Delay`. Las herramientas de procesos del agente
     respetan esa misma regla. Igual que con los change sets para la auditoría:
     antes de inventar mecanismo, miramos qué trae la imagen.
+11. **El servidor no toma recursos del host.** El puerto es un recurso del sistema
+    operativo: quien lo tomó lo tiene, y el que llega segundo falla. Por eso
+    `start` falla si el servidor ya está escuchando (`Already listening on port N`)
+    y falla distinto si el puerto es de otro, con el puerto en el mensaje. No hay
+    ningún `restart` que suelte el puerto a la fuerza, por dos razones: matar al
+    otro no es algo que un servidor serio haga, y menos un servidor MCP, que no
+    debe tomar recursos del host en nombre del cliente. Mover el servidor es una
+    decisión de quien es dueño de la imagen, y el precio de no hacerlo por él es
+    que el socket que escucha sin contestar deja de ser silencioso: ahora se nota
+    al arrancar.
+12. **El autor de los cambios es de quien autoriza.** El paquete no firma distinto
+    ni inventa un autor: lo que el agente escribe queda a nombre del dueño de la
+    imagen, porque el autor significa responsabilidad, y la responsabilidad es de
+    quien autoriza el cambio, escriba con la herramienta que escriba (es la misma
+    convención que git: el commit lleva el nombre del humano y la ayuda de una
+    herramienta se anota en el mensaje, no en el autor). Al arrancar, el servidor
+    **exige** que la imagen tenga autor.
 
 ## Fases
 

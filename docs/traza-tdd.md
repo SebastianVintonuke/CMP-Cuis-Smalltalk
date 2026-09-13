@@ -283,30 +283,52 @@ La decisión quedó así:
   el más viejo llamaba a código ya borrado, así que la suite no corría. El nombre del test
   es su identidad.
 
-## El rearme del servidor (ciclo 30)
+## El rearme del servidor: sin `restart` (ciclos 30 y 31)
 
-`start` sobre un puerto tomado avisaba bien (`Failed to listen`), pero quedaba el caso
-peor: un socket viejo que acepta conexiones y no contesta, con el servidor *pareciendo*
-vivo. Rearmarlo era un ritual manual —destruir, esperar, crear— que se olvida fácil, y se
-olvidó: así quedó el 8790 durante un rato esta tarde.
+**El problema.** `start` sobre un puerto tomado avisaba bien (`Failed to listen`), pero
+quedaba el caso peor: un socket que escucha y no contesta, con el servidor *pareciendo*
+vivo. Rearmarlo era un ritual manual —destruir, esperar, crear— que se olvida fácil.
 
-Ahora hay tres cosas separadas, a propósito:
+**El primer intento** agregó un `restart` que soltaba el puerto a la fuerza (destruyendo lo
+que estuviera escuchando ahí) y un `start` idempotente. **Se descartó**, por una razón de
+fondo que trajo Sebastian: el puerto es un recurso del sistema operativo, y quien lo tomó lo
+tiene; el que llega segundo falla y el que administra mira qué pasa. Ningún servidor serio
+mata al otro para quedarse con el puerto, y menos un servidor MCP, que no debe tomar
+recursos del host en nombre del cliente.
 
-- **`isListening`**: si *este* servidor está escuchando de verdad. Un servidor guardado en
-  la imagen contesta su puerto y su catálogo aunque nadie escuche (Problema 7), así que
-  este es el que no miente.
-- **`start` idempotente**: si ya escucha, se contesta a sí mismo; si el puerto es de otro,
-  falla con el puerto en el mensaje.
-- **`restart`**: suelta el puerto (incluido el socket fantasma, vía
-  `MCPServerEnvironment releasePort:`), espera a que el sistema lo libere y escucha de
-  nuevo; después verifica y, si no quedó escuchando, lo dice.
+**Lo que quedó:**
 
-`start` y `restart` quedaron separados porque tomar el puerto de otro tiene que ser una
-decisión, no un efecto colateral.
+- **`isListening`**: si *este* servidor está escuchando de verdad. Es el que no miente: un
+  servidor guardado contesta su puerto y su catálogo aunque nadie escuche (Problema 7).
+- **`start` falla si ya está escuchando**: `Already listening on port 8790`. Arrancar dos
+  veces es un error que se dice, no una operación que se repite en silencio.
+- **Puerto tomado por otro**: el error es distinto y trae el puerto
+  (`Could not listen on port 8790: Failed to listen(...)`).
+- **No hay `restart`**: mover el servidor es decisión de quien es dueño de la imagen, no algo
+  que el servidor haga por sí mismo.
 
 | # | Test | Rojo | Verde | Qué se implementó |
 | --- | --- | --- | --- | --- |
-| 30 | arrancar dos veces es un solo servidor, y rearmar vuelve a tomar el puerto | el segundo `start` tiraba `Failed to listen` sobre su propio puerto | 42/42 | `isListening`, `start` idempotente, `restart` y `releasePort:` en el entorno |
+| 30-31 | arrancar dos veces lo dice, y no hay `restart` | el segundo `start` tiraba `Failed to listen`; después, el test nuevo fallaba | 41/41 | `isListening`, `listenOnThePort`, `start` que falla si ya escucha, y el borrado de `restart` y `releasePort:` |
+
+### El fantasma, reproducido (tres experimentos)
+
+1. **La vía mínima**: parar el listener dejando el socket abierto (`stopListener`). El puerto
+   queda en LISTEN, el cliente **no** recibe `connection refused` y se cuelga.
+2. **La vía realista, que es la que nos pasó**: **destruir el servidor desde un pedido que
+   él mismo está atendiendo**. `destroy` mata las conexiones en curso —incluida la del
+   pedido— y el socket queda escuchando sin nadie aceptando.
+3. **Lo que no lo produce**: que la imagen se muera (el sistema operativo cierra sus sockets
+   y el puerto queda libre) y destruir y crear en el mismo pedido desde *otro* servidor
+   (anda bien).
+
+Consecuencia práctica: **no autodestruirse desde un pedido**, y si pasa, el rearme es una
+decisión desde la imagen (mirar qué `WebServer` está escuchando en ese puerto y destruirlo),
+no algo que el servidor haga por su cuenta.
+
+Y una lección de método que ya se repitió dos veces: **compilar un test con otro nombre no
+reemplaza al anterior**. Cuando la expectativa cambia, el test tiene que cambiar de cuerpo y
+conservar su selector.
 
 ## File out
 

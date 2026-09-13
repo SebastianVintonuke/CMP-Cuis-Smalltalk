@@ -47,9 +47,15 @@ server start.
 Smalltalk at: #MCPDemo put: server
 ```
 
-Para rearmarlo —por ejemplo si el puerto quedó tomado por un socket viejo— hay
-`server restart`: suelta el puerto, espera y vuelve a escuchar. `start` es idempotente: si
-ya está escuchando, no hace nada.
+Para rearmarlo —por ejemplo si el puerto quedó tomado por un socket viejo que escucha y no
+contesta— `start` lo dice y no arranca: **soltar el puerto es cosa tuya, desde la imagen**,
+mirando qué `WebServer` está escuchando ahí. El servidor no toma puertos de nadie, ni
+siquiera suyos. Desde un Workspace:
+
+```smalltalk
+WebServer allInstances do: [ :each |
+	(each listenerProcess isNil not and: [ each listenerPort = 8790 ]) ifTrue: [ each destroy ] ]
+```
 
 Y se apaga con `(Smalltalk at: #MCPDemo) destroy`.
 

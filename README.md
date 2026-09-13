@@ -56,7 +56,9 @@ headless aparte.
 - **Flujo MCP funcionando**: `initialize`, `tools/list` y `tools/call` sobre HTTP en
   `/mcp`, verificado contra la imagen viva. Para levantarlo: `MCPServer on: 8790 tools:
   { MCPServerWorkspaceTools. MCPServerBrowserTools. MCPServerTestingTools }` y `start`;
-  se apaga con `destroy`, que libera el puerto, y se rearma con `restart`.
+  se apaga con `destroy`, que libera el puerto. Arrancar dos veces, o un puerto que ya está
+  tomado, son errores que se dicen con su mensaje: mover el servidor es decisión de quien es
+  dueño de la imagen, y el servidor no toma puertos de nadie.
 - **Dependencias declaradas**: `MCPServer` pide `WebClient` y `JSON`, y el paquete de
   tests pide `MCPServer`, así que `Feature require: 'MCPServer'` trae todo.
 - **El autor de los cambios es de quien autoriza**: el paquete no firma distinto ni
@@ -323,6 +325,24 @@ Opciones (sin decidir):
 - **Que el servidor sepa que está muerto**: que `start` sea idempotente y que preguntarle
   el estado a un servidor guardado diga que ya no escucha (hoy no hay forma de
   distinguirlo mirando el objeto).
+
+### Y el socket que escucha sin nadie aceptando
+
+Hay un estado peor que el global viejo: un socket en LISTEN que **no contesta**, porque el
+proceso que aceptaba ya no está. Se reconoce desde afuera por lo que *no* pasa: el cliente no
+recibe `connection refused`, se queda esperando. Se reprodujo con dos recetas:
+
+- parar el listener dejando el socket abierto (`webServer stopListener`);
+- **destruir el servidor desde un pedido que él mismo está atendiendo** (es lo que pasó el
+  13/09 y lo que más cuesta entender: `destroy` mata las conexiones en curso, incluida la del
+  pedido, y el socket queda escuchando solo).
+
+Al revés de lo que parece, **no** lo produce que la imagen se muera (el sistema operativo
+cierra sus sockets y el puerto queda libre).
+
+Consecuencia: **no autodestruirse desde un pedido**, y si pasa, `start` lo dice (falla,
+porque el puerto está tomado) y soltarlo es una decisión desde la imagen, mirando qué
+`WebServer` está escuchando ahí. El servidor no toma puertos de nadie, ni siquiera suyos.
 
 ## Precedentes
 

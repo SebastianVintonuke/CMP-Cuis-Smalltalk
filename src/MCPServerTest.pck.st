@@ -451,30 +451,15 @@ test06StartingRequiresAnAuthor
 		self should: [ second start ] raise: Error ]
 		ensure: [ Utilities setAuthorName: 'Sebastian' initials: before ]! !
 
-!MCPServerTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 20:22:47'!
-test07StartingTwiceIsOneServer
-	"Starting is idempotent: a server that is already listening does not start again and
-	does not complain, and there is one listener on the port."
+!MCPServerTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 20:46:29'!
+test07StartingTwiceSaysItIsAlreadyListening
+	"Starting a server that is already listening is said, not done: the server does not take
+	a port away from anybody, not even from itself."
 	| server |
 	server := MCPServer on: 8796 tools: { MCPServerWorkspaceTools }.
 	[ server start.
-	  server start.
-	  self assert: server isListening.
-	  self assert: (WebServer allInstances select: [ :each |
-		  each listenerProcess isNil not and: [ each listenerPort = 8796 ] ]) size equals: 1 ]
-		ensure: [ server destroy ]! !
-
-!MCPServerTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 20:22:47'!
-test08RestartTakesThePortAgain
-	"Restarting releases the port, waits for the system to let go and listens again: the
-	ritual of destroying and creating by hand, with the pause inside."
-	| server |
-	server := MCPServer on: 8797 tools: { MCPServerWorkspaceTools }.
-	[ server start.
-	  server restart.
-	  self assert: server isListening.
-	  self assert: (WebServer allInstances select: [ :each |
-		  each listenerProcess isNil not and: [ each listenerPort = 8797 ] ]) size equals: 1 ]
+	  self should: [ server start ] raise: Error
+		  withMessageText: 'Already listening on port 8796' ]
 		ensure: [ server destroy ]! !
 
 !MCPServerTestingToolsTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 18:58:42'!

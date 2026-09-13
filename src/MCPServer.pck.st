@@ -229,12 +229,50 @@ allCallsOn: aSelectorString
 		out nextPutAll: (self referenceStringFor: each); newLine ].
 	^ out contents! !
 
+!MCPServerBrowserTools methodsFor: 'accessing' stamp: 'S.V. 13/Sep/2026 18:18:48'!
+allImplementorsOf: aSelectorString
+	"The implementors pane: every method in the image that implements that selector,
+	written as the Browser writes a method reference. The first 100 are listed."
+	<mcpTool: #all_implementors_of system: 'Browser' arguments: #('selector')>
+	| references out |
+	references := (Smalltalk allImplementorsOf: aSelectorString asSymbol)
+		asSortedCollection: [ :a :b | a printString <= b printString ].
+	out := WriteStream on: String new.
+	out nextPutAll: references size printString, ' implementors of ', aSelectorString; newLine.
+	references asArray withIndexDo: [ :each :index |
+		index > 100 ifTrue: [ ^ out contents ].
+		out nextPutAll: (self referenceStringFor: each); newLine ].
+	^ out contents! !
+
 !MCPServerBrowserTools methodsFor: 'accessing' stamp: 'S.V. 13/Sep/2026 15:42:52'!
 commentOfClass: aClassName
 	"The class comment pane: the comment of the class, which is where the class says
 	what it is for. The class side answers the same comment as the class."
 	<mcpTool: #comment_of_class system: 'Browser' arguments: #('class')>
 	^ (self classNamed: aClassName) comment! !
+
+!MCPServerBrowserTools methodsFor: 'accessing' stamp: 'S.V. 13/Sep/2026 18:18:48'!
+hierarchyOfClass: aClassName
+	"The class pane with the hierarchy: the chain of superclasses from the root down to
+	the class, and then the classes that inherit from it."
+	<mcpTool: #hierarchy_of_class system: 'Browser' arguments: #('class')>
+	| class chain subclasses out |
+	class := self classNamed: aClassName.
+	chain := OrderedCollection new.
+	chain addFirst: class.
+	[ chain first superclass isNil ] whileFalse: [ chain addFirst: chain first superclass ].
+	out := WriteStream on: String new.
+	out nextPutAll: 'hierarchy:'; newLine.
+	chain withIndexDo: [ :each :index |
+		(index - 1) timesRepeat: [ out nextPut: Character space ].
+		out nextPutAll: each name; newLine ].
+	subclasses := (class subclasses asSortedCollection: [ :a :b | a name <= b name ]) asArray.
+	out nextPutAll: 'subclasses (', subclasses size printString, '):'.
+	subclasses isEmpty
+		ifTrue: [ out nextPutAll: ' none' ]
+		ifFalse: [ subclasses do: [ :each | out nextPutAll: ' ', each name ] ].
+	out newLine.
+	^ out contents! !
 
 !MCPServerBrowserTools methodsFor: 'accessing' stamp: 'S.V. 13/Sep/2026 15:42:25'!
 selectorsOfClass: aClassName
@@ -298,6 +336,18 @@ writeSelectorsOf: aClass on: aStream
 			selectors do: [ :each | aStream nextPutAll: each asString; nextPut: Character space ].
 			aStream newLine ] ].
 	wrote ifFalse: [ aStream nextPutAll: side, ': no methods'; newLine ]! !
+
+!MCPServerBrowserTools methodsFor: 'editing' stamp: 'S.V. 13/Sep/2026 18:18:59'!
+classifyMethod: aSelectorString inClass: aClassName under: aCategoryString
+	"The protocol pane: move that method of that class into that method category."
+	<mcpTool: #classify_method_in_class_under system: 'Browser' arguments: #('selector' 'class' 'category')>
+	| class selector |
+	class := self classNamed: aClassName.
+	selector := aSelectorString asSymbol.
+	(class includesSelector: selector) ifFalse: [
+		Error signal: 'No method ', aSelectorString, ' in ', class name ].
+	class organization classify: selector under: aCategoryString asSymbol.
+	^ 'Classified ', aSelectorString, ' in ', class name, ' under ', aCategoryString! !
 
 !MCPServerBrowserTools methodsFor: 'editing' stamp: 'S.V. 13/Sep/2026 15:43:12'!
 compileMethod: aSourceString inClass: aClassName classified: aCategoryString

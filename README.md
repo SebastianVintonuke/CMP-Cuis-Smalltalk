@@ -249,13 +249,18 @@ Opciones y estado de cada una:
 
 - **Concurrencia optimista (compare-and-set)**: leer devuelve un token de versión;
   escribir lo exige de vuelta; si no coincide, error de conflicto con la fuente
-  actual, para que el agente relea y reintente. **Decidida, sin implementar.**
+  actual, para que el agente relea y reintente. **Descartada deliberadamente
+  (13/09/2026)**: en un contexto real hace falta, pero complica la interfaz del agente
+  (token de ida y vuelta, conflicto, reintento) y el alcance del proyecto es una demo
+  creativa, no un producto en producción. Queda anotada como problema conocido e
+  ignorado a propósito, no por descuido.
 - **Visibilidad, atribución y revert** (el change set del agente, anuncios en el
-  Transcript, marca en el `stamp`): **sin decidir**, se define cuando haga falta.
+  Transcript, marca en el `stamp`): **fuera de alcance** por la misma razón. El revert a
+  mano ya existe igual: la imagen trae `ChangeSet` y `VersionsBrowser`.
 - **Serializar las escrituras del agente** con un mutex, para que dos clientes MCP
-  no se entrelacen. Sin decidir; es barato y no involucra al humano.
-- **Checkpoints** con `saveAs:` a un archivo aparte: propuesto en la conversación
-  de reversibilidad, sin decidir todavía.
+  no se entrelacen: **fuera de alcance** (en la demo hay un solo cliente).
+- **Checkpoints** con `saveAs:` a un archivo aparte: **fuera de alcance** (es caro y la
+  demo no lo necesita).
 - **Descartado**: bloquear al humano o parchear su camino de edición, que sería
   ponerle al humano una regla que al agente no.
 
@@ -324,7 +329,8 @@ cambio de estado, y que el cambio sea explícito.
   compilar un método, correr tests— *además* de `evaluate`? Los precedentes de
   Smalltalk van por la segunda opción, con `eval` siempre presente.
 - **Política para las escrituras**: libres, con confirmación desde la imagen, o
-  permitidas solo en clases marcadas como seguras.
+  permitidas solo en clases marcadas como seguras. (El compare-and-set que las
+  protegía quedó descartado por alcance: ver Problemas 3.)
 - **Superficie de herramientas**: en elaboración (ver el inventario de
   herramientas del programador). `evaluate` queda expuesto, pero la interfaz
   expresa que lo esperable es interactuar a través de las herramientas

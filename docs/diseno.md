@@ -19,8 +19,8 @@ de implementar, para decidir la forma y no descubrirla escribiendo.
    protocolo no conoce las herramientas; las herramientas usan la imagen.
 5. **Inmutabilidad donde se pueda.** El catálogo de herramientas se construye una
    vez y no cambia. El estado compartido inmutable elimina la necesidad de locks:
-   lo único mutable es la imagen, que es asunto del entorno (y el compare-and-set
-   que decide el humano).
+   lo único mutable es la imagen, que es asunto del entorno. La guarda de versión
+   (compare-and-set) quedó descartada por alcance: ver README, Problemas 3.
 6. **Semántica Smalltalk.** Los nombres de las herramientas son selectores de la
    imagen (decisión 3) y la declaración vive junto al código, en un pragma.
 7. **Reusar lo que la imagen ya trae** (decisión 10): `Pragma` y
@@ -74,6 +74,7 @@ Object
 ├─ MCPToolDecorator (protocolo) ─ [Decorator] misma interfaz que MCPTool, envuelve a otra
 │   └─ MCPVersionGuardDecorator ─ compare-and-set: verifica el token antes de escribir
 │                                  (a futuro: visibilidad, blancos privilegiados)
+│                                  DESCARTADO por alcance (13/09/2026): ver README, Problemas 3
 ├─ MCPToolInvocation ──────────── [Value Object] herramienta + argumentos ya coercionados
 ├─ MCPArguments ───────────────── [Value Object] argumentos nombrados y validados
 ├─ MCPArgumentCoercion ────────── [Strategy] tabla: tipo declarado → cómo convertir el JSON
@@ -83,6 +84,7 @@ Object
 ├─ MCPErrorMapper ─────────────── [Strategy] excepción de Smalltalk → MCPResult con isError
 ├─ MCPVersionToken ────────────── [Value Object / Memento] el token que devuelve la lectura
 ├─ MCPVersioning ──────────────── calcula el token y verifica el conflicto
+│                                  (los dos DESCARTADOS por alcance: ver README, Problemas 3)
 ├─ MCPWindowProjection ────────── [Adapter] proyecta un resultado en la herramienta visual real
 ├─ MCPEnvironment ─────────────── acceso a la imagen (clases, categorías, fuentes, procesos);
 │                                  colaborador inyectado ⇒ las fachadas se testean con un fake
@@ -106,9 +108,9 @@ Todo lo demás cuelga de `Object` y se relaciona por composición.
 | Patrón | Dónde | Por qué |
 | --- | --- | --- |
 | **Command** | `MCPTool`, `MCPProtocolCommand` | Pedido como objeto: uniforma la ejecución, permite registrar, decorar y cancelar |
-| **Memento** | `MCPVersionToken` | La lectura entrega un recuerdo del estado; la escritura lo verifica antes de pisar |
+| **Memento** (descartado) | `MCPVersionToken` | Era para el guard de versión; quedó fuera de alcance (ver README, Problemas 3) |
 | **Strategy** | `MCPValueRenderer`, `MCPArgumentCoercion`, `MCPErrorMapper`, `MCPTransport` | Familias de algoritmos intercambiables, sin cadenas de `caseOf:` y abiertas a extensión |
-| **Decorator** | `MCPVersionGuardDecorator` | Preocupación transversal (compare-and-set) sin ensuciar las herramientas ni el catálogo |
+| **Decorator** (descartado) | `MCPVersionGuardDecorator` | Era para el compare-and-set; quedó fuera de alcance (ver README, Problemas 3) |
 | **Builder** | `MCPCatalogueBuilder` | Construcción paso a paso de un objeto complejo e inmutable |
 | **Adapter** | `MCPHttpEndpoint`, `MCPWindowProjection` | Traducir entre dos interfaces que no deben conocerse |
 | **Facade** | Las fachadas por ventana | Una interfaz por herramienta visual, delegando en la imagen |
@@ -138,9 +140,8 @@ JSON. La lista sale de los pragmas: no hay dos lugares donde esté declarada una
 herramienta.
 
 **`tools/call`.** `MCPCallToolCommand` → busca en el catálogo (si no existe:
-error de protocolo) → coercion de argumentos según el descriptor → el decorador de
-versión verifica el token si la herramienta lo exige → `MCPTool` ejecuta el
-`MethodReference` → `MCPResult` → renderer con política de límites.
+error de protocolo) → coercion de argumentos según el descriptor → `MCPTool` ejecuta
+el `MethodReference` → `MCPResult` → renderer con política de límites.
 
 **Cancelación.** `notifications/cancelled` → `MCPCancelCommand` → la sesión sabe
 qué `Process` atiende ese id (registro de pedidos en vuelo) → `terminate`. Es el
@@ -190,8 +191,9 @@ cancelación se prueban con procesos de mentira.
 - **Inmutable**: catálogo, descriptores, valores. Sin locks.
 - **Por conexión**: `MCPSession` (versión, initialized, pedidos en vuelo). Una
   sesión no ve a las otras.
-- **Del entorno**: la imagen. Ahí no hay transacciones: el compare-and-set de la
-  capa de invocación avisa en vez de bloquear.
+- **Del entorno**: la imagen. Ahí no hay transacciones: la escritura del agente puede
+  pisar lo que el humano tenía abierto. Es un problema conocido y **descartado a
+  propósito** por alcance (ver README, Problemas 3).
 - **Un proceso por pedido**: lo aporta el `WebServer`. Sobre eso, la ejecución de
   cada herramienta corre en un **proceso trabajador propio con prioridad menor que
   la UI** (decidido): el handler espera su resultado. Así el humano nunca pierde el

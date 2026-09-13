@@ -216,8 +216,11 @@ regenerar), y `MCPServerTest` (la clase) tuvo que moverse a la categoría
 ## Lo que falta
 
 1. **Cancelación** (`notifications/cancelled`): decidida, sin implementar.
-2. **Decorador de versión** (compare-and-set) en las herramientas que escriben: hoy
-   `compile_method_in_class_classified` y `remove_method_in_class` escriben sin guarda.
+2. **Guarda de versión (compare-and-set) en las herramientas que escriben**:
+   **descartada a propósito** por alcance (13/09/2026, decisión de Sebastian). Las dos
+   que escriben (`compile_method_in_class_classified` y `remove_method_in_class`) usan
+   el mismo camino que las demás: sin token, sin conflicto y sin reintento. En un
+   contexto real haría falta; acá complica la interfaz y no aporta a la demo.
 3. **Proceso trabajador de prioridad baja**: decidido, sin implementar.
 4. **Sesiones MCP**: hoy el servidor es sin estado, no recuerda el `protocolVersion`
    negociado (alcanza para el Inspector; no para sesiones con estado).

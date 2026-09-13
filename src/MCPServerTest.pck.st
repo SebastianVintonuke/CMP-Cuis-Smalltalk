@@ -227,6 +227,39 @@ test12DoesNotSayAsYetUnclassified
 	self assert: (text findString: 'as yet unclassified') equals: 0.
 	self assert: (text findString: 'class side: no methods') > 0! !
 
+!MCPServerBrowserToolsTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 18:18:40'!
+test13AnswersTheImplementorsOfASelector
+	"The implementors pane: every method in the image that implements that selector,
+	written the way the Browser writes a method reference."
+	| text |
+	text := MCPServerBrowserTools new allImplementorsOf: 'printStringLimitedTo:'.
+	self assert: (text findString: '>>printStringLimitedTo:') > 0! !
+
+!MCPServerBrowserToolsTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 18:18:41'!
+test14AnswersTheHierarchyOfAClass
+	"The class pane with the hierarchy: the chain from the root down to the class, and
+	then the classes that inherit from it."
+	| text |
+	text := MCPServerBrowserTools new hierarchyOfClass: 'TestCase'.
+	self assert: (text findString: 'TestCase') > 0.
+	self assert: (text findString: 'Object') > 0.
+	self assert: (text findString: 'MCPServerBrowserToolsTest') > 0! !
+
+!MCPServerBrowserToolsTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 18:18:54'!
+test15ClassifiesAMethodUnderACategory
+	"The protocol pane: the method moves into that method category."
+	| scratch |
+	scratch := Smalltalk at: #MCPServerBrowserToolsScratch.
+	MCPServerBrowserTools new
+		compileMethod: 'zap ^ 6 * 7'
+		inClass: 'MCPServerBrowserToolsScratch'
+		classified: 'testing'.
+	MCPServerBrowserTools new
+		classifyMethod: 'zap'
+		inClass: 'MCPServerBrowserToolsScratch'
+		under: 'prueba'.
+	self assert: (scratch organization categoryOfElement: #zap) equals: #prueba! !
+
 !MCPServerBrowserToolsTest methodsFor: 'private' stamp: 'S.V. 13/Sep/2026 15:42:06'!
 foo ^ MCPServerBrowserTools new! !
 

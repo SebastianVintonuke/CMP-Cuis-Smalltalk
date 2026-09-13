@@ -1,32 +1,29 @@
 #!/usr/bin/env python3
 """Panel estilo Swagger para el servidor MCP que vive en la imagen de Cuis.
 
+Es un cliente del producto y nada mas: asume que el servidor MCP ya esta corriendo
+dentro de la imagen y le habla por MCP (JSON-RPC sobre HTTP). Lo unico que hay que
+decirle es en que puerto escucha ese servidor.
+
 Sirve una pagina en http://127.0.0.1:<panel> que:
   - lista las herramientas del servidor MCP (tools/list),
   - arma un formulario por herramienta con los campos de su inputSchema,
   - y tiene un boton para correrla (tools/call) y ver la respuesta.
 
-La lista es dinamica: sale de tools/list, no hay nombres de herramientas aca.
-
-Los pedidos al MCP los hace este proceso (no el navegador), asi que no hay problema
-de CORS ni de transporte. Ademas, si el servidor MCP no contesta, el panel se lo pide
-a la imagen (endpoint /evaluate del puerto --cuis): es lo que usan los botones de
-arrancar y apagar, y necesita los identificadores de las fachadas de herramientas.
+La lista es dinamica: sale de tools/list, no hay nombres de herramientas aca. Los
+pedidos al MCP los hace este proceso (no el navegador), asi que no hay problema de
+CORS ni de transporte.
 
 Uso:
-    python3 demo/panel-mcp.py --tools MCPServerWorkspaceTools MCPServerBrowserTools \\
-        --port 8790 --cuis 8765 --panel 8899
+    python3 demo/panel-mcp.py --port 8790 --panel 8899
 """
 import argparse
 import json
-import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 # Parametros del programa (los llena main).
 MCP_PORT = 8790
-CUIS_PORT = 8765
-TOOLS = ["MCPServerWorkspaceTools", "MCPServerBrowserTools"]
 
 _COUNTER = [0]
 
@@ -62,14 +59,11 @@ PAGE = """<!doctype html>
 </head>
 <body>
 <h1>MCP panel</h1>
-<div class="sub" id="sub">connecting...</div>
+<div class="sub" id="sub">connecting to __PORT__...</div>
 <div class="bar">
   <button class="ghost" onclick="load()">Reload tools</button>
-  <button class="ghost" onclick="server('start')">Start server</button>
-  <button class="ghost" onclick="server('stop')">Stop server</button>
   <label class="inline"><input type="checkbox" id="raw"> show raw JSON</label>
 </div>
-<div id="server"></div>
 <div id="tools"></div>
 <script>
 async function load() {
@@ -81,27 +75,13 @@ async function load() {
     const r = await fetch('/api/tools');
     const data = await r.json();
     if (!r.ok) throw new Error(data.error || r.statusText);
-    sub.textContent = data.length + (data.length === 1 ? ' tool' : ' tools');
+    sub.textContent = data.length + (data.length === 1 ? ' tool' : ' tools') + ' on port __PORT__';
     data.forEach(t => tools.appendChild(card(t)));
   } catch (e) {
     sub.textContent = 'not connected';
     tools.innerHTML = '<pre class="err">Could not read the tool list: ' + e.message +
-      '<\\n><\\n>Is the MCP server running? Press "Start server" (it needs the Cuis image).</pre>';
-  }
-}
-async function server(action) {
-  const box = document.getElementById('server');
-  box.innerHTML = '<pre>working...</pre>';
-  try {
-    const r = await fetch('/api/server/' + action, { method: 'POST' });
-    const data = await r.json();
-    if (!r.ok || (data.answer || '').startsWith('ERROR')) {
-      throw new Error(data.error || data.answer || r.statusText);
-    }
-    box.innerHTML = '<pre class="ok">' + action + ': ' + data.answer + '</pre>';
-    await load();
-  } catch (e) {
-    box.innerHTML = '<pre class="err">Could not ' + action + ' the server: ' + e.message + '</pre>';
+      '<\\n><\\n>Is the MCP server running on port __PORT__? Start it from the image: ' +
+      'MCPServer on: __PORT__ tools: { ... } then start.</pre>';
   }
 }
 function card(t) {
@@ -167,8 +147,8 @@ load();
 """
 
 
-def mcp_url():
-    return f"http://127.0.0.1:{MCP_PORT}/mcp"
+def page():
+    return PAGE.replace("__PORT__", str(MCP_PORT))
 
 
 def rpc(method, params=None):
@@ -178,7 +158,7 @@ def rpc(method, params=None):
     if params is not None:
         payload["params"] = params
     request = urllib.request.Request(
-        mcp_url(),
+        f"http://127.0.0.1:{MCP_PORT}/mcp",
         data=json.dumps(payload).encode("utf-8"),
         headers={
             "Content-Type": "application/json",
@@ -193,50 +173,6 @@ def rpc(method, params=None):
         lines = [line[5:].strip() for line in body.splitlines() if line.startswith("data:")]
         body = lines[-1] if lines else ""
     return json.loads(body) if body.strip() else None
-
-
-def cuis_evaluate(source):
-    """Le manda Smalltalk al endpoint /evaluate de la imagen y contesta lo que dice."""
-    request = urllib.request.Request(
-        f"http://127.0.0.1:{CUIS_PORT}/evaluate",
-        data=source.encode("utf-8"),
-        headers={"Content-Type": "text/plain; charset=utf-8"},
-    )
-    with urllib.request.urlopen(request, timeout=120) as response:
-        return response.read().decode("utf-8", "replace").strip()
-
-
-def start_source():
-    """El Smalltalk que levanta el servidor: apaga lo que escuche en ese puerto y crea
-    uno nuevo con las fachadas que se pasaron por parametro."""
-    tools = " ".join(tool + "." for tool in TOOLS)
-    return f"""| server |
-WebServer allInstances do: [ :each |
-	(each listenerProcess isNil not and: [ each listenerPort = {MCP_PORT} ]) ifTrue: [ each destroy ] ].
-server := MCPServer on: {MCP_PORT} tools: {{ {tools} }}.
-server start.
-Smalltalk at: #MCPDemo put: server.
-'serving on {MCP_PORT}'"""
-
-
-def stop_source():
-    """El Smalltalk que apaga lo que este escuchando en ese puerto."""
-    return f"""WebServer allInstances do: [ :each |
-	(each listenerProcess isNil not and: [ each listenerPort = {MCP_PORT} ]) ifTrue: [ each destroy ] ].
-'stopped {MCP_PORT}'"""
-
-
-def ensure_server():
-    """Si el servidor MCP no contesta, se lo pide a la imagen. Contesta el detalle."""
-    try:
-        rpc("tools/list")
-        return "already serving"
-    except Exception:  # noqa: BLE001 - si no contesta, lo levantamos
-        pass
-    answer = cuis_evaluate(start_source())
-    if answer.startswith("ERROR"):
-        raise RuntimeError(answer)
-    return answer
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -262,16 +198,11 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as error:  # noqa: BLE001 - el panel tiene que poder contarlo
                 self._send_error(error)
         else:
-            self._send(200, PAGE, "text/html; charset=utf-8")
+            self._send(200, page(), "text/html; charset=utf-8")
 
     def do_POST(self):
         length = int(self.headers.get("Content-Length", 0) or 0)
         try:
-            if self.path.startswith("/api/server/"):
-                action = self.path.rsplit("/", 1)[-1]
-                source = start_source() if action == "start" else stop_source()
-                self._send(200, json.dumps({"answer": cuis_evaluate(source)}))
-                return
             data = json.loads(self.rfile.read(length) or b"{}")
             response = rpc(
                 "tools/call",
@@ -286,23 +217,20 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
-    global MCP_PORT, CUIS_PORT, TOOLS
-    parser = argparse.ArgumentParser(description="Panel estilo Swagger para el MCP de Cuis.")
-    parser.add_argument(
-        "--tools", nargs="+", default=TOOLS,
-        help="identificadores (nombres de clase) de las fachadas cuyas herramientas expone el servidor",
+    global MCP_PORT
+    parser = argparse.ArgumentParser(
+        description="Panel para usar a mano el servidor MCP de la imagen de Cuis."
     )
     parser.add_argument("--port", type=int, default=MCP_PORT, help="puerto del servidor MCP")
-    parser.add_argument("--cuis", type=int, default=CUIS_PORT, help="puerto del /evaluate de la imagen")
     parser.add_argument("--panel", type=int, default=8899, help="puerto de este panel")
     options = parser.parse_args()
     MCP_PORT = options.port
-    CUIS_PORT = options.cuis
-    TOOLS = options.tools
     try:
-        print(f"MCP {mcp_url()} -> {ensure_server()}", flush=True)
+        response = rpc("tools/list") or {}
+        tools = (response.get("result") or {}).get("tools", [])
+        print(f"MCP en el puerto {MCP_PORT}: {len(tools)} herramientas", flush=True)
     except Exception as error:  # noqa: BLE001 - el panel sirve igual, para poder verlo
-        print(f"MCP {mcp_url()} -> no responde y no pude levantarlo: {error}", flush=True)
+        print(f"MCP en el puerto {MCP_PORT}: no contesta ({error})", flush=True)
     print(f"Panel en http://127.0.0.1:{options.panel}", flush=True)
     ThreadingHTTPServer(("127.0.0.1", options.panel), Handler).serve_forever()
 

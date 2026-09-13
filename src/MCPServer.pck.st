@@ -1,5 +1,6 @@
 'Description MCP server for Cuis Smalltalk: exposes, to an agent, the tools a programmer has in the image.'!
-!provides: 'MCPServer' 1 1!
+!provides: 'MCPServer' 1 2!
+!requires: 'WebClient' 1 0 nil!
 !requires: 'JSON' 1 0 nil!
 SystemOrganization addCategory: #MCPServer!
 
@@ -34,6 +35,16 @@ Object subclass: #MCPServerCatalogueBuilder
 MCPServerCatalogueBuilder class
 	instanceVariableNames: ''!
 
+!classDefinition: #MCPServerEnvironment category: #MCPServer!
+Object subclass: #MCPServerEnvironment
+	instanceVariableNames: ''
+	classVariableNames: ''
+	poolDictionaries: ''
+	category: 'MCPServer'!
+!classDefinition: 'MCPServerEnvironment class' category: #MCPServer!
+MCPServerEnvironment class
+	instanceVariableNames: ''!
+
 !classDefinition: #MCPServerMethodComment category: #MCPServer!
 Object subclass: #MCPServerMethodComment
 	instanceVariableNames: ''
@@ -52,6 +63,16 @@ Object subclass: #MCPServerProtocol
 	category: 'MCPServer'!
 !classDefinition: 'MCPServerProtocol class' category: #MCPServer!
 MCPServerProtocol class
+	instanceVariableNames: ''!
+
+!classDefinition: #MCPServerTestingTools category: #MCPServer!
+Object subclass: #MCPServerTestingTools
+	instanceVariableNames: ''
+	classVariableNames: ''
+	poolDictionaries: ''
+	category: 'MCPServer'!
+!classDefinition: 'MCPServerTestingTools class' category: #MCPServer!
+MCPServerTestingTools class
 	instanceVariableNames: ''!
 
 !classDefinition: #MCPServerTool category: #MCPServer!
@@ -120,6 +141,9 @@ given class I ask for its descriptor; if it declares a tool, the tool goes into
 the catalogue under the name the pragma says. The declaration and the
 implementation are the same method, so they cannot drift.!
 
+!MCPServerEnvironment commentStamp: '<historical>' prior: 0!
+I am the access to the image that every facade shares: I answer classes by the name the Browser class pane shows (the class side says Foo class), and I am where the rest of the image access will live. Nothing of mine is state: what I read is the image.!
+
 !MCPServerMethodComment commentStamp: '<historical>' prior: 0!
 I read the comment of a method from its source. In Smalltalk the comment
 is the first string after the message pattern, so I skip the pattern and take it.
@@ -132,6 +156,9 @@ I speak MCP. I take a message (a JSON-RPC dictionary) and answer the response
 dictionary, or nothing when the message is a notification. I know the protocol
 methods and the shape of the answers; I know nothing about HTTP, and about the
 tools I only know what the catalogue tells me.!
+
+!MCPServerTestingTools commentStamp: '<historical>' prior: 0!
+I am the Test Runner facade: the operations a programmer performs from the Test Runner window, exposed as MCP tools. I run tests and answer what the programmer reads there: the counts and, if there are any, the defects. I hold no state.!
 
 !MCPServerTool commentStamp: '<historical>' prior: 0!
 I am a tool as a command: the descriptor says what I am, and I know how to
@@ -244,20 +271,20 @@ allImplementorsOf: aSelectorString
 		out nextPutAll: (self referenceStringFor: each); newLine ].
 	^ out contents! !
 
-!MCPServerBrowserTools methodsFor: 'accessing' stamp: 'S.V. 13/Sep/2026 15:42:52'!
+!MCPServerBrowserTools methodsFor: 'accessing' stamp: 'S.V. 13/Sep/2026 18:58:42'!
 commentOfClass: aClassName
 	"The class comment pane: the comment of the class, which is where the class says
 	what it is for. The class side answers the same comment as the class."
 	<mcpTool: #comment_of_class system: 'Browser' arguments: #('class')>
-	^ (self classNamed: aClassName) comment! !
+	^ (MCPServerEnvironment classNamed: aClassName) comment! !
 
-!MCPServerBrowserTools methodsFor: 'accessing' stamp: 'S.V. 13/Sep/2026 18:18:48'!
+!MCPServerBrowserTools methodsFor: 'accessing' stamp: 'S.V. 13/Sep/2026 18:58:42'!
 hierarchyOfClass: aClassName
 	"The class pane with the hierarchy: the chain of superclasses from the root down to
 	the class, and then the classes that inherit from it."
 	<mcpTool: #hierarchy_of_class system: 'Browser' arguments: #('class')>
 	| class chain subclasses out |
-	class := self classNamed: aClassName.
+	class := MCPServerEnvironment classNamed: aClassName.
 	chain := OrderedCollection new.
 	chain addFirst: class.
 	[ chain first superclass isNil ] whileFalse: [ chain addFirst: chain first superclass ].
@@ -274,42 +301,30 @@ hierarchyOfClass: aClassName
 	out newLine.
 	^ out contents! !
 
-!MCPServerBrowserTools methodsFor: 'accessing' stamp: 'S.V. 13/Sep/2026 15:42:25'!
+!MCPServerBrowserTools methodsFor: 'accessing' stamp: 'S.V. 13/Sep/2026 18:58:42'!
 selectorsOfClass: aClassName
 	"The class pane, the protocol pane and the selector pane: the selectors of the
 	class named aClassName, grouped by the method category they are classified under.
 	A name ending in ' class' means the class side, the way the class pane shows it."
 	<mcpTool: #selectors_of_class system: 'Browser' arguments: #('class')>
 	| class out |
-	class := self classNamed: aClassName.
+	class := MCPServerEnvironment classNamed: aClassName.
 	out := WriteStream on: String new.
 	self writeSelectorsOf: class on: out.
 	class isMeta ifFalse: [ self writeSelectorsOf: class class on: out ].
 	^ out contents! !
 
-!MCPServerBrowserTools methodsFor: 'accessing' stamp: 'S.V. 13/Sep/2026 15:42:25'!
+!MCPServerBrowserTools methodsFor: 'accessing' stamp: 'S.V. 13/Sep/2026 18:58:42'!
 sourceOfMethod: aSelectorString inClass: aClassName
 	"The source pane: the source of that method of that class, comment and pragmas
 	included."
 	<mcpTool: #source_of_method_in_class system: 'Browser' arguments: #('selector' 'class')>
 	| class selector |
-	class := self classNamed: aClassName.
+	class := MCPServerEnvironment classNamed: aClassName.
 	selector := aSelectorString asSymbol.
 	(class includesSelector: selector) ifFalse: [
 		Error signal: 'No method ', aSelectorString, ' in ', class name ].
 	^ (class compiledMethodAt: selector) sourceCode! !
-
-!MCPServerBrowserTools methodsFor: 'private' stamp: 'S.V. 13/Sep/2026 15:42:25'!
-classNamed: aString
-	"Private. Answer the class named aString, or its metaclass when the name ends in
-	' class': the class pane shows the class side that way."
-	| name class |
-	name := aString asString.
-	(name endsWith: ' class') ifTrue: [
-		^ (self classNamed: (name copyFrom: 1 to: name size - 6)) class ].
-	class := Smalltalk at: name asSymbol ifAbsent: [ nil ].
-	class ifNil: [ Error signal: 'No class named ', name printString ].
-	^ class! !
 
 !MCPServerBrowserTools methodsFor: 'private' stamp: 'S.V. 13/Sep/2026 15:42:52'!
 referenceStringFor: aMethodReference
@@ -337,26 +352,26 @@ writeSelectorsOf: aClass on: aStream
 			aStream newLine ] ].
 	wrote ifFalse: [ aStream nextPutAll: side, ': no methods'; newLine ]! !
 
-!MCPServerBrowserTools methodsFor: 'editing' stamp: 'S.V. 13/Sep/2026 18:18:59'!
+!MCPServerBrowserTools methodsFor: 'editing' stamp: 'S.V. 13/Sep/2026 18:58:42'!
 classifyMethod: aSelectorString inClass: aClassName under: aCategoryString
 	"The protocol pane: move that method of that class into that method category."
 	<mcpTool: #classify_method_in_class_under system: 'Browser' arguments: #('selector' 'class' 'category')>
 	| class selector |
-	class := self classNamed: aClassName.
+	class := MCPServerEnvironment classNamed: aClassName.
 	selector := aSelectorString asSymbol.
 	(class includesSelector: selector) ifFalse: [
 		Error signal: 'No method ', aSelectorString, ' in ', class name ].
 	class organization classify: selector under: aCategoryString asSymbol.
 	^ 'Classified ', aSelectorString, ' in ', class name, ' under ', aCategoryString! !
 
-!MCPServerBrowserTools methodsFor: 'editing' stamp: 'S.V. 13/Sep/2026 15:43:12'!
+!MCPServerBrowserTools methodsFor: 'editing' stamp: 'S.V. 13/Sep/2026 18:58:42'!
 compileMethod: aSourceString inClass: aClassName classified: aCategoryString
 	"The source pane, after accepting: compile that source in that class, under that
 	method category. A source that does not compile answers the syntax error and
 	changes nothing."
 	<mcpTool: #compile_method_in_class_classified system: 'Browser' arguments: #('source' 'class' 'category')>
 	| class selector out |
-	class := self classNamed: aClassName.
+	class := MCPServerEnvironment classNamed: aClassName.
 	selector := class compile: aSourceString classified: aCategoryString asSymbol.
 	out := WriteStream on: String new.
 	out nextPutAll: 'Compiled ', class name, '>>', selector asString, ' in category ', aCategoryString, ':'.
@@ -364,18 +379,32 @@ compileMethod: aSourceString inClass: aClassName classified: aCategoryString
 	out nextPutAll: (class compiledMethodAt: selector) sourceCode.
 	^ out contents! !
 
-!MCPServerBrowserTools methodsFor: 'editing' stamp: 'S.V. 13/Sep/2026 15:43:12'!
+!MCPServerBrowserTools methodsFor: 'editing' stamp: 'S.V. 13/Sep/2026 18:58:42'!
 removeMethod: aSelectorString inClass: aClassName
 	"The Browser remove: take that method out of that class. A selector the class does
 	not understand is said, not removed."
 	<mcpTool: #remove_method_in_class system: 'Browser' arguments: #('selector' 'class')>
 	| class selector |
-	class := self classNamed: aClassName.
+	class := MCPServerEnvironment classNamed: aClassName.
 	selector := aSelectorString asSymbol.
 	(class includesSelector: selector) ifFalse: [
 		Error signal: 'No method ', aSelectorString, ' in ', class name ].
 	class removeSelector: selector.
 	^ 'Removed ', aSelectorString, ' from ', class name! !
+
+!MCPServerBrowserTools methodsFor: 'file out' stamp: 'S.V. 13/Sep/2026 18:59:32'!
+fileOutPackage: aCategoryName to: aFilePath
+	"The file out of the Browser: write the package of that category to that file, so the
+	code lives outside the image too. The usual destination is the image's Packages
+	directory, but any path is allowed, and the file is overwritten."
+	<mcpTool: #file_out_package_to system: 'Browser' arguments: #('category' 'path')>
+	| package file |
+	package := CodePackage packageOfSystemCategory: aCategoryName asSymbol ifNone: [ nil ].
+	package ifNil: [ Error signal: 'No package for the category ', aCategoryName ].
+	file := FileEntry withAbsolutePathName: aFilePath.
+	file exists ifTrue: [ file delete ].
+	file writeStreamDo: [ :stream | package writeOnStream: stream ].
+	^ 'Wrote ', aCategoryName, ' to ', aFilePath! !
 
 !MCPServerCatalogueBuilder class methodsFor: 'building' stamp: 'S.V. 13/Sep/2026 12:12:12'!
 buildFrom: aCollectionOfClasses
@@ -390,6 +419,19 @@ buildFrom: aCollectionOfClasses
 			descriptor ifNotNil: [
 				tools at: descriptor name put: (MCPServerTool on: descriptor) ] ] ].
 	^ MCPServerToolCatalogue on: tools! !
+
+!MCPServerEnvironment class methodsFor: 'accessing' stamp: 'S.V. 13/Sep/2026 18:58:42'!
+classNamed: aString
+	"Answer the class named aString, or its metaclass when the name ends in ' class',
+	the way the class pane of the Browser shows the class side. A name that is not a
+	class is said, not answered with nil."
+	| theName theClass |
+	theName := aString asString.
+	(theName endsWith: ' class') ifTrue: [
+		^ (self classNamed: (theName copyFrom: 1 to: theName size - 6)) class ].
+	theClass := Smalltalk at: theName asSymbol ifAbsent: [ nil ].
+	theClass ifNil: [ Error signal: 'No class named ', theName printString ].
+	^ theClass! !
 
 !MCPServerMethodComment class methodsFor: 'reading' stamp: 'S.V. 13/Sep/2026 12:11:12'!
 fromSource: aSourceString
@@ -565,6 +607,59 @@ setCatalogue: aCatalogue
 
 !MCPServerProtocol class methodsFor: 'instance creation' stamp: 'S.V. 13/Sep/2026 12:32:32'!
 on: aCatalogue ^ self new setCatalogue: aCatalogue! !
+
+!MCPServerTestingTools methodsFor: 'running' stamp: 'S.V. 13/Sep/2026 18:58:42'!
+runTestsInCategory: aCategoryName
+	"The Test Runner over a whole package: every test class of that category, in one run."
+	<mcpTool: #run_tests_in_category system: 'Test Runner' arguments: #('category')>
+	^ self summaryOfRunning: (self suiteForCategory: aCategoryName)! !
+
+!MCPServerTestingTools methodsFor: 'running' stamp: 'S.V. 13/Sep/2026 18:58:42'!
+runTestsInClass: aClassName
+	"The Test Runner over one test class: run its tests and answer the summary."
+	<mcpTool: #run_tests_in_class system: 'Test Runner' arguments: #('class')>
+	| class suite |
+	class := self testClassNamed: aClassName.
+	suite := TestSuite new.
+	class addToSuiteFromSelectors: suite.
+	^ self summaryOfRunning: suite! !
+
+!MCPServerTestingTools methodsFor: 'private' stamp: 'S.V. 13/Sep/2026 18:58:42'!
+suiteForCategory: aCategoryName
+	"Private. Answer a suite with the tests of every test class of that category."
+	| category classes suite |
+	category := aCategoryName asSymbol.
+	classes := (TestCase subclasses select: [ :each | each category = category ])
+		asSortedCollection: [ :a :b | a name <= b name ].
+	classes isEmpty ifTrue: [ Error signal: 'No test classes in category ', aCategoryName ].
+	suite := TestSuite new.
+	classes do: [ :each | each addToSuiteFromSelectors: suite ].
+	^ suite! !
+
+!MCPServerTestingTools methodsFor: 'private' stamp: 'S.V. 13/Sep/2026 18:58:42'!
+summaryOfRunning: aSuite
+	"Private. Run the suite and answer it as the Test Runner shows it: the counts and,
+	when there are any, each defect with its description."
+	| result out |
+	result := aSuite run.
+	out := WriteStream on: String new.
+	out nextPutAll: result runCount printString, ' tests, ',
+		result passedCount printString, ' passed, ',
+		result failureCount printString, ' failures, ',
+		result errorCount printString, ' errors'.
+	out newLine.
+	result failures do: [ :each | out nextPutAll: 'FAILURE ', each printString; newLine ].
+	result errors do: [ :each | out nextPutAll: 'ERROR ', each printString; newLine ].
+	^ out contents! !
+
+!MCPServerTestingTools methodsFor: 'private' stamp: 'S.V. 13/Sep/2026 18:58:42'!
+testClassNamed: aString
+	"Private. Answer the class named aString, which has to be a test case."
+	| class |
+	class := MCPServerEnvironment classNamed: aString.
+	((class inheritsFrom: TestCase) or: [ class == TestCase ])
+		ifFalse: [ Error signal: aString, ' is not a test case' ].
+	^ class! !
 
 !MCPServerTool methodsFor: 'accessing' stamp: 'S.V. 13/Sep/2026 12:11:45'!
 descriptor ^descriptor! !

@@ -1,5 +1,6 @@
 'Description Tests for the MCPServer package.'!
-!provides: 'MCPServerTest' 1 1!
+!provides: 'MCPServerTest' 1 2!
+!requires: 'MCPServer' 1 0 nil!
 SystemOrganization addCategory: #MCPServerTest!
 
 
@@ -51,6 +52,16 @@ TestCase subclass: #MCPServerTest
 	category: 'MCPServerTest'!
 !classDefinition: 'MCPServerTest class' category: #MCPServerTest!
 MCPServerTest class
+	instanceVariableNames: ''!
+
+!classDefinition: #MCPServerTestingToolsTest category: #MCPServerTest!
+TestCase subclass: #MCPServerTestingToolsTest
+	instanceVariableNames: ''
+	classVariableNames: ''
+	poolDictionaries: ''
+	category: 'MCPServerTest'!
+!classDefinition: 'MCPServerTestingToolsTest class' category: #MCPServerTest!
+MCPServerTestingToolsTest class
 	instanceVariableNames: ''!
 
 !classDefinition: #MCPServerToolCatalogueTest category: #MCPServerTest!
@@ -105,6 +116,9 @@ I test the reader of a method comment, which is where the tool description comes
 
 !MCPServerProtocolTest commentStamp: '<historical>' prior: 0!
 I test the MCP protocol: the message in, the response out.!
+
+!MCPServerTestingToolsTest commentStamp: '<historical>' prior: 0!
+I test the Test Runner facade: running the tests of a class, and taking the test classes of a whole package.!
 
 !MCPServerToolCatalogueTest commentStamp: '<historical>' prior: 0!
 I test the catalogue: the set of tools exposed, built from the declarations.!
@@ -260,6 +274,18 @@ test15ClassifiesAMethodUnderACategory
 		under: 'prueba'.
 	self assert: (scratch organization categoryOfElement: #zap) equals: #prueba! !
 
+!MCPServerBrowserToolsTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 18:59:04'!
+test16WritesThePackageToAFile
+	"The file out: the package goes to a file, so the code also lives outside the image."
+	| path text |
+	path := '/tmp/MCPServerTest-de-prueba.pck.st'.
+	MCPServerBrowserTools new fileOutPackage: 'MCPServerTest' to: path.
+	text := WriteStream on: String new.
+	(FileEntry withAbsolutePathName: path) readStreamDo: [ :stream | text nextPutAll: stream upToEnd ].
+	self assert: (text contents findString: '!!provides: ''MCPServerTest''') > 0.
+	self assert: (text contents findString: 'MCPServerBrowserToolsTest') > 0.
+	(FileEntry withAbsolutePathName: path) delete! !
+
 !MCPServerBrowserToolsTest methodsFor: 'private' stamp: 'S.V. 13/Sep/2026 15:42:06'!
 foo ^ MCPServerBrowserTools new! !
 
@@ -413,6 +439,33 @@ test05TwoServersDoNotShareTheirState
 	self assert: (one catalogue toolNamed: #print_it) notNil.
 	self deny: (one catalogue toolNamed: #selectors_of_class) notNil.
 	self assert: (another catalogue toolNamed: #selectors_of_class) notNil! !
+
+!MCPServerTestingToolsTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 18:58:42'!
+test01RunsTheTestsOfATestClass
+	"The Test Runner over one class: the counts, and the defects if there are any."
+	| text |
+	text := MCPServerTestingTools new runTestsInClass: 'MCPServerToolTest'.
+	self assert: (text findString: '2 tests') > 0.
+	self assert: (text findString: '2 passed') > 0.
+	self assert: (text findString: '0 failures') > 0.
+	self assert: (text findString: '0 errors') > 0! !
+
+!MCPServerTestingToolsTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 18:58:42'!
+test02TakesEveryTestClassOfTheCategory
+	"Every test class of that category, and no other. It does not run them: running the
+	very category that contains this test would call this test again."
+	| suite names |
+	suite := MCPServerTestingTools new suiteForCategory: 'MCPServerTest'.
+	names := (suite tests collect: [ :each | each class name ]) asSet.
+	self assert: names size >= 8.
+	self assert: (names includes: 'MCPServerBrowserToolsTest').
+	suite tests do: [ :each | self assert: (each class inheritsFrom: TestCase) ]! !
+
+!MCPServerTestingToolsTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 18:58:42'!
+test03SaysWhenThereIsNothingToRun
+	"A class that is not a test case, or a category without tests, is said."
+	self should: [ MCPServerTestingTools new runTestsInClass: 'MCPServer' ] raise: Error.
+	self should: [ MCPServerTestingTools new runTestsInCategory: 'NoSuchCategory' ] raise: Error! !
 
 !MCPServerToolCatalogueTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 12:31:42'!
 test01IsBuiltFromTheDeclarations

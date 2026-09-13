@@ -283,6 +283,31 @@ La decisión quedó así:
   el más viejo llamaba a código ya borrado, así que la suite no corría. El nombre del test
   es su identidad.
 
+## El rearme del servidor (ciclo 30)
+
+`start` sobre un puerto tomado avisaba bien (`Failed to listen`), pero quedaba el caso
+peor: un socket viejo que acepta conexiones y no contesta, con el servidor *pareciendo*
+vivo. Rearmarlo era un ritual manual —destruir, esperar, crear— que se olvida fácil, y se
+olvidó: así quedó el 8790 durante un rato esta tarde.
+
+Ahora hay tres cosas separadas, a propósito:
+
+- **`isListening`**: si *este* servidor está escuchando de verdad. Un servidor guardado en
+  la imagen contesta su puerto y su catálogo aunque nadie escuche (Problema 7), así que
+  este es el que no miente.
+- **`start` idempotente**: si ya escucha, se contesta a sí mismo; si el puerto es de otro,
+  falla con el puerto en el mensaje.
+- **`restart`**: suelta el puerto (incluido el socket fantasma, vía
+  `MCPServerEnvironment releasePort:`), espera a que el sistema lo libere y escucha de
+  nuevo; después verifica y, si no quedó escuchando, lo dice.
+
+`start` y `restart` quedaron separados porque tomar el puerto de otro tiene que ser una
+decisión, no un efecto colateral.
+
+| # | Test | Rojo | Verde | Qué se implementó |
+| --- | --- | --- | --- | --- |
+| 30 | arrancar dos veces es un solo servidor, y rearmar vuelve a tomar el puerto | el segundo `start` tiraba `Failed to listen` sobre su propio puerto | 42/42 | `isListening`, `start` idempotente, `restart` y `releasePort:` en el entorno |
+
 ## File out
 
 Quedaron `src/MCPServer.pck.st` (10 clases de producción) y

@@ -190,22 +190,41 @@ message receives what it needs as an argument.!
 !MCPServer methodsFor: 'accessing' stamp: 'S.V. 13/Sep/2026 15:47:46'!
 catalogue ^catalogue! !
 
+!MCPServer methodsFor: 'accessing' stamp: 'S.V. 13/Sep/2026 20:23:00'!
+isListening
+	"Answer whether this server is listening right now. A server saved in the image answers
+	its port and its catalogue even when nothing is listening on the socket, so this is what
+	tells the truth."
+	^ webServer notNil and: [ webServer listenerProcess isNil not ]! !
+
 !MCPServer methodsFor: 'accessing' stamp: 'S.V. 13/Sep/2026 15:47:46'!
 port ^port! !
 
 !MCPServer methodsFor: 'accessing' stamp: 'S.V. 13/Sep/2026 15:47:46'!
 protocol ^ MCPServerProtocol on: catalogue! !
 
-!MCPServer methodsFor: 'starting' stamp: 'S.V. 13/Sep/2026 20:15:59'!
+!MCPServer methodsFor: 'starting' stamp: 'S.V. 13/Sep/2026 20:23:00'!
+restart
+	"Take the port again, whatever was listening on it: release it, wait for the system to
+	let go, and listen again. Destroying and creating in the same request does not work: the
+	new listener can end up not serving."
+	self destroy.
+	MCPServerEnvironment releasePort: port.
+	(Delay forMilliseconds: 500) wait.
+	self listenOnThePort.
+	self isListening ifFalse: [ Error signal: 'Restarted but not listening on port ', port printString ].
+	^ self! !
+
+!MCPServer methodsFor: 'starting' stamp: 'S.V. 13/Sep/2026 20:23:00'!
 start
-	"Listen on the given port, loopback only, and serve the MCP endpoint. The image has to
-	have an author: what the agent writes is the responsibility of whoever owns the image,
-	so the server does not invent one. Reading the author this way never asks the human
-	anything."
+	"Listen on the given port, loopback only, and serve the MCP endpoint. Starting is
+	idempotent: a server that is already listening answers itself. The image has to have an
+	author: what the agent writes is the responsibility of whoever owns the image, so the
+	server does not invent one. Reading the author this way never asks."
 	Utilities authorInitialsPerSe isNil ifTrue: [ self errorNoAuthor ].
 	Utilities authorInitialsPerSe isEmpty ifTrue: [ self errorNoAuthor ].
-	webServer := WebServer new listenOn: port interface: #(127 0 0 1).
-	webServer addService: '/mcp' action: [ :request | self handleRequest: request ].
+	self isListening ifTrue: [ ^ self ].
+	self listenOnThePort.
 	^ self! !
 
 !MCPServer methodsFor: 'stopping' stamp: 'S.V. 13/Sep/2026 15:47:46'!
@@ -237,6 +256,15 @@ handleRequestBody: aString
 errorNoAuthor
 	"Private. The image has no author, so the changes cannot be anybody's responsibility."
 	Error signal: 'This image has no author. Set yours (Utilities setAuthorName: aName initials: someInitials) and start again.'! !
+
+!MCPServer methodsFor: 'private' stamp: 'S.V. 13/Sep/2026 20:23:00'!
+listenOnThePort
+	"Private. Create the WebServer and the MCP endpoint. A port that is already taken says
+	so, with the port in the message."
+	[ webServer := WebServer new listenOn: port interface: #(127 0 0 1) ]
+		on: Error
+		do: [ :error | Error signal: 'Could not listen on port ', port printString, ': ', error messageText ].
+	webServer addService: '/mcp' action: [ :request | self handleRequest: request ]! !
 
 !MCPServer methodsFor: 'private' stamp: 'S.V. 13/Sep/2026 15:47:46'!
 setPort: aPort catalogue: aCatalogue
@@ -442,6 +470,16 @@ classNamed: aString
 	theClass := Smalltalk at: theName asSymbol ifAbsent: [ nil ].
 	theClass ifNil: [ Error signal: 'No class named ', theName printString ].
 	^ theClass! !
+
+!MCPServerEnvironment class methodsFor: 'accessing' stamp: 'S.V. 13/Sep/2026 20:23:00'!
+releasePort: aPort
+	"Destroy every WebServer of this image that is listening on that port, including the
+	sockets of a server that is not there any more. Taking a port again is a decision, so
+	this is only used by restart."
+	(WebServer allInstances select: [ :each |
+		each listenerProcess isNil not and: [ each listenerPort = aPort ] ])
+			do: [ :each | each destroy ].
+	^ aPort! !
 
 !MCPServerMethodComment class methodsFor: 'reading' stamp: 'S.V. 13/Sep/2026 12:11:12'!
 fromSource: aSourceString

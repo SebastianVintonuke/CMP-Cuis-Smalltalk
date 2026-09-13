@@ -47,9 +47,9 @@ server start.
 Smalltalk at: #MCPDemo put: server
 ```
 
-Ojo: si ya había uno escuchando en ese puerto, `start` avisa (`Failed to listen`) y no
-levanta nada; para rearmarlo hay que destruir el anterior y esperar un momento antes de
-crear el nuevo.
+Para rearmarlo —por ejemplo si el puerto quedó tomado por un socket viejo— hay
+`server restart`: suelta el puerto, espera y vuelve a escuchar. `start` es idempotente: si
+ya está escuchando, no hace nada.
 
 Y se apaga con `(Smalltalk at: #MCPDemo) destroy`.
 

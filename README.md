@@ -56,7 +56,7 @@ headless aparte.
 - **Flujo MCP funcionando**: `initialize`, `tools/list` y `tools/call` sobre HTTP en
   `/mcp`, verificado contra la imagen viva. Para levantarlo: `MCPServer on: 8790 tools:
   { MCPServerWorkspaceTools. MCPServerBrowserTools. MCPServerTestingTools }` y `start`;
-  se apaga con `destroy`, que libera el puerto.
+  se apaga con `destroy`, que libera el puerto, y se rearma con `restart`.
 - **Dependencias declaradas**: `MCPServer` pide `WebClient` y `JSON`, y el paquete de
   tests pide `MCPServer`, así que `Feature require: 'MCPServer'` trae todo.
 - **El autor de los cambios es de quien autoriza**: el paquete no firma distinto ni

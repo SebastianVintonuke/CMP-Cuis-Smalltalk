@@ -177,14 +177,31 @@ Y las siete herramientas, con la ventana de la que vienen (el `system` del pragm
 
 ### Hallazgos del entorno (los nuevos)
 
-- **Un `MessageNotUnderstood` dentro de un test escapa del runner de SUnit**: los
-  ciclos rojos no dan `errors=1`, abortan la corrida entera (los fallos de aserción sí
-  se cuentan). Por eso las corridas en rojo se envuelven en un `on: Error do:`.
+- **Un error inesperado dentro de un test escapa del runner de SUnit**: los ciclos
+  rojos no dan `errors=1`, abortan la corrida entera — da igual si es un
+  `MessageNotUnderstood` o un `Error: key: '_meta' not found` (los fallos de aserción,
+  en cambio, sí se cuentan). Por eso las corridas en rojo se envuelven en un
+  `on: Error do:`.
 - **`listenOn:interface:` avisa cuando el puerto está tomado** (`Error: Failed to
   listen(interface: #(127 0 0 1) port: 8792 )`); no falla en silencio.
 - **`destroy` libera el puerto**: se puede volver a levantar el servidor en el mismo puerto.
 - **`MethodReference>>actualClass name` del lado de clase ya dice `Foo class`**, así que
   las referencias se escriben como las escribe el Browser, sin armar el nombre a mano.
+
+## La ventana de origen en el protocolo (ciclo 22)
+
+Cada herramienta es el análogo de una operación que el programador hace en una ventana
+de la imagen, y eso se declara en el pragma (`system: 'Workspace'`, `system: 'Browser'`).
+Ese dato estaba en el descriptor desde el primer día, pero `tools/list` no lo mandaba:
+ahora cada herramienta lo lleva en su `_meta`, que es donde el protocolo deja los datos
+propios del servidor.
+
+| # | Test | Rojo | Verde | Qué se implementó |
+| --- | --- | --- | --- | --- |
+| 22 | cada herramienta dice de qué ventana viene | `Error: key: '_meta' not found` | 32/32 | `_meta.system` en `MCPServerProtocol>>descriptionOf:` |
+
+Un cliente lo puede usar para agrupar o para mostrar de dónde sale cada herramienta (el
+panel de `demo/` lo muestra al lado del nombre).
 
 ## File out
 

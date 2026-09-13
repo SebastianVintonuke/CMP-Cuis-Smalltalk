@@ -435,14 +435,20 @@ contentOf: aToolResult
 	result at: 'isError' put: aToolResult isError.
 	^ result! !
 
-!MCPServerProtocol methodsFor: 'answers' stamp: 'S.V. 13/Sep/2026 12:32:32'!
+!MCPServerProtocol methodsFor: 'answers' stamp: 'S.V. 13/Sep/2026 18:02:15'!
 descriptionOf: aTool
-	| descriptor description |
+	"Answer the tool as the protocol describes it: the name it is called by, the comment
+	of the method as its description, the arguments the pragma declares, and where it
+	comes from (the window of the image it is the analogue of)."
+	| descriptor description meta |
 	descriptor := aTool descriptor.
 	description := Dictionary new.
 	description at: 'name' put: descriptor name asString.
 	description at: 'description' put: descriptor description.
 	description at: 'inputSchema' put: (self inputSchemaFor: descriptor).
+	meta := Dictionary new.
+	meta at: 'system' put: descriptor system.
+	description at: '_meta' put: meta.
 	^ description! !
 
 !MCPServerProtocol methodsFor: 'answers' stamp: 'S.V. 13/Sep/2026 12:32:32'!

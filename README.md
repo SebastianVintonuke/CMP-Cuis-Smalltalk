@@ -46,7 +46,8 @@ headless aparte.
   `print_it`, la del Workspace, y las seis del Browser (leer los selectores de una
   clase y su comentario, leer la fuente de un método, ver quién manda un selector,
   compilar un método y removerlo). Cada herramienta se declara con un pragma y su
-  descripción es el comentario del método que la implementa.
+  descripción es el comentario del método que la implementa; en su `_meta` dice de qué
+  ventana de la imagen viene.
 - **Flujo MCP funcionando**: `initialize`, `tools/list` y `tools/call` sobre HTTP en
   `/mcp`, verificado contra la imagen viva. Para levantarlo:
   `MCPServer on: 8790 tools: { MCPServerWorkspaceTools. MCPServerBrowserTools }` y

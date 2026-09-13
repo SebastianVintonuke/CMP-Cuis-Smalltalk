@@ -309,6 +309,17 @@ test06ANotificationAnswersNothing
 	"A notification carries no id: there is nothing to answer."
 	self assert: (self newProtocol handleMessage: (self requestMethod: 'notifications/initialized' id: nil)) isNil! !
 
+!MCPServerProtocolTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 18:02:07'!
+test07ToolsListSaysWhichWindowEachToolComesFrom
+	"Every tool says, in its metadata, which window of the image it comes from: the tool
+	is the analogue of an operation the programmer does there."
+	| tools tool meta |
+	tools := ((self newProtocol handleMessage: (self requestMethod: 'tools/list' id: 2))
+		at: 'result') at: 'tools'.
+	tool := tools detect: [ :each | (each at: 'name') = 'print_it' ].
+	meta := tool at: '_meta'.
+	self assert: (meta at: 'system') equals: 'Workspace'! !
+
 !MCPServerProtocolTest methodsFor: 'private' stamp: 'S.V. 13/Sep/2026 12:32:11'!
 callRequestFor: aToolName arguments: aDictionary
 	| request params |

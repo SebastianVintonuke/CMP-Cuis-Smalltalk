@@ -39,6 +39,8 @@ PAGE = """<!doctype html>
   .sub { opacity: .7; font-size: 13px; margin-bottom: 18px; }
   .tool { border: 1px solid #8884; border-radius: 8px; padding: 14px 16px; margin-bottom: 14px; }
   .tool h2 { font-size: 15px; margin: 0 0 6px; font-family: ui-monospace, monospace; }
+  .tool h2 .badge { font-size: 11px; font-weight: 400; opacity: .75; border: 1px solid #8886;
+                    border-radius: 10px; padding: 1px 7px; margin-left: 6px; vertical-align: middle; }
   .desc { white-space: pre-wrap; opacity: .8; font-size: 13px; margin-bottom: 10px; }
   label { display: block; font-size: 12px; opacity: .75; margin: 8px 0 3px; }
   input, textarea { width: 100%; box-sizing: border-box; font-family: ui-monospace, monospace;
@@ -89,7 +91,14 @@ function card(t) {
   box.className = 'tool';
   const props = (t.inputSchema && t.inputSchema.properties) || {};
   const h = document.createElement('h2');
-  h.textContent = t.name;
+  h.textContent = t.name + ' ';
+  const system = (t._meta && t._meta.system) || '';
+  if (system) {
+    const badge = document.createElement('span');
+    badge.className = 'badge';
+    badge.textContent = system;
+    h.appendChild(badge);
+  }
   box.appendChild(h);
   const d = document.createElement('div');
   d.className = 'desc';

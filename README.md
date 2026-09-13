@@ -296,6 +296,29 @@ Cada pedido crea un proceso, y cada cambio que hace el agente engorda los change
 sets de la imagen. Falta decidir si el paquete ofrece "descartar los cambios del
 agente" y qué pasa con el guardado.
 
+### 7. El manejador del servidor queda viejo al guardar y reabrir la imagen
+
+Un servidor MCP no sobrevive a un guardado: la imagen se acuerda del *objeto* (lo que
+haya en un global, como `Smalltalk at: #MCPDemo put: server`), pero no del socket ni
+del proceso que escucha. Después de reabrir, ese global apunta a un servidor **muerto
+que igual parece vivo**: contesta su `port`, su `catalogue` y hasta su lista de
+herramientas, porque son datos del objeto, no del socket.
+
+Nos pasó el 13/09 y costó un rato entenderlo: el servidor de demo parecía contestar
+cosas viejas porque el global apuntaba a un objeto que no era el que estaba escuchando
+(encima, el bug de las variables compartidas lo disimulaba).
+
+Opciones (sin decidir):
+
+- **Limpiar los globals al arrancar**: al iniciar la imagen, buscar los globals que
+  sean servidores y ponerlos en nil. Barato y evita la confusión, pero hay que
+  engancharse al arranque de Cuis.
+- **No usar un global**: dejar el servidor en una variable del Workspace, o dentro de un
+  objeto que se cree de nuevo al arrancar. Menos magia, menos alcance.
+- **Que el servidor sepa que está muerto**: que `start` sea idempotente y que preguntarle
+  el estado a un servidor guardado diga que ya no escucha (hoy no hay forma de
+  distinguirlo mirando el objeto).
+
 ## Precedentes
 
 Quién ya enfrentó lo mismo: exponer un entorno vivo a un agente, con

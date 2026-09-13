@@ -51,5 +51,10 @@ Ojo: si ya había uno escuchando en ese puerto, `start` avisa (`Failed to listen
 levanta nada; para rearmarlo hay que destruir el anterior y esperar un momento antes de
 crear el nuevo.
 
-Y se apaga con `(Smalltalk at: #MCPDemo) destroy`. Si la imagen se reinicia, hay que
-volver a arrancarlo (todavía no está en el arranque de Cuis).
+Y se apaga con `(Smalltalk at: #MCPDemo) destroy`.
+
+Dos avisos sobre guardar la imagen. Primero: el servidor **no sobrevive al guardado**
+(el socket no se guarda), así que hay que arrancarlo de nuevo. Segundo: el global queda
+apuntando a un servidor muerto que igual contesta `port` y `catalogue` como si viviera,
+así que no sirve para saber si hay algo escuchando. Está contado como Problema 7 del
+README.

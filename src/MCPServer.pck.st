@@ -196,10 +196,14 @@ port ^port! !
 !MCPServer methodsFor: 'accessing' stamp: 'S.V. 13/Sep/2026 15:47:46'!
 protocol ^ MCPServerProtocol on: catalogue! !
 
-!MCPServer methodsFor: 'starting' stamp: 'S.V. 13/Sep/2026 20:02:28'!
+!MCPServer methodsFor: 'starting' stamp: 'S.V. 13/Sep/2026 20:15:59'!
 start
-	"Listen on the given port, loopback only, and serve the MCP endpoint."
-	MCPServerEnvironment useAgentSignature.
+	"Listen on the given port, loopback only, and serve the MCP endpoint. The image has to
+	have an author: what the agent writes is the responsibility of whoever owns the image,
+	so the server does not invent one. Reading the author this way never asks the human
+	anything."
+	Utilities authorInitialsPerSe isNil ifTrue: [ self errorNoAuthor ].
+	Utilities authorInitialsPerSe isEmpty ifTrue: [ self errorNoAuthor ].
 	webServer := WebServer new listenOn: port interface: #(127 0 0 1).
 	webServer addService: '/mcp' action: [ :request | self handleRequest: request ].
 	^ self! !
@@ -228,6 +232,11 @@ handleRequestBody: aString
 	response := self protocol handleMessage: (Json readFrom: aString readStream).
 	response ifNil: [ ^ nil ].
 	^ Json render: response! !
+
+!MCPServer methodsFor: 'private' stamp: 'S.V. 13/Sep/2026 20:15:59'!
+errorNoAuthor
+	"Private. The image has no author, so the changes cannot be anybody's responsibility."
+	Error signal: 'This image has no author. Set yours (Utilities setAuthorName: aName initials: someInitials) and start again.'! !
 
 !MCPServer methodsFor: 'private' stamp: 'S.V. 13/Sep/2026 15:47:46'!
 setPort: aPort catalogue: aCatalogue
@@ -421,28 +430,6 @@ buildFrom: aCollectionOfClasses
 				tools at: descriptor name put: (MCPServerTool on: descriptor) ] ] ].
 	^ MCPServerToolCatalogue on: tools! !
 
-!MCPServerEnvironment class methodsFor: 'accessing' stamp: 'S.V. 13/Sep/2026 20:02:13'!
-agentInitials
-	"Answer the initials the changes of the agent are stamped with."
-	^ 'MCP'! !
-
-!MCPServerEnvironment class methodsFor: 'accessing' stamp: 'S.V. 13/Sep/2026 20:02:13'!
-agentName
-	"Answer the name the changes of the agent are stamped with."
-	^ 'MCP server'! !
-
-!MCPServerEnvironment class methodsFor: 'accessing' stamp: 'S.V. 13/Sep/2026 20:02:13'!
-authorSignature
-	"Answer the signature the changes of the agent are stamped with: the agent, and inside
-	the initials of whoever the image belongs to, so the two are told apart. Reading the
-	author does not ask the human anything, and a signature that is already the agent's is
-	answered as it is, so it never composes over itself."
-	| human |
-	human := Utilities authorInitialsPerSe.
-	(human isNil or: [ human isEmpty ]) ifTrue: [ ^ self agentInitials ].
-	(human beginsWith: self agentInitials) ifTrue: [ ^ human ].
-	^ self agentInitials, '(', human, ')'! !
-
 !MCPServerEnvironment class methodsFor: 'accessing' stamp: 'S.V. 13/Sep/2026 18:58:42'!
 classNamed: aString
 	"Answer the class named aString, or its metaclass when the name ends in ' class',
@@ -455,13 +442,6 @@ classNamed: aString
 	theClass := Smalltalk at: theName asSymbol ifAbsent: [ nil ].
 	theClass ifNil: [ Error signal: 'No class named ', theName printString ].
 	^ theClass! !
-
-!MCPServerEnvironment class methodsFor: 'accessing' stamp: 'S.V. 13/Sep/2026 20:02:13'!
-useAgentSignature
-	"Sign the changes of the agent from here on: what the agent writes is stamped as the
-	agent's, keeping the initials of the image's owner inside."
-	Utilities setAuthorName: self agentName initials: self authorSignature.
-	^ self authorSignature! !
 
 !MCPServerMethodComment class methodsFor: 'reading' stamp: 'S.V. 13/Sep/2026 12:11:12'!
 fromSource: aSourceString
@@ -694,11 +674,11 @@ testClassNamed: aString
 !MCPServerTool methodsFor: 'accessing' stamp: 'S.V. 13/Sep/2026 12:11:45'!
 descriptor ^descriptor! !
 
-!MCPServerTool methodsFor: 'running' stamp: 'S.V. 13/Sep/2026 12:12:40'!
+!MCPServerTool methodsFor: 'running' stamp: 'S.V. 13/Sep/2026 20:15:59'!
 executeWith: anArrayOfValues
-	"Answer the MCPServerToolResult of running this tool with the given values.
-	A failing expression answers an error result instead of letting the exception
-	escape: the tool is the boundary between the image and the protocol."
+	"Answer the MCPServerToolResult of running this tool with the given values. A failing
+	expression answers an error result instead of letting the exception escape: the tool is
+	the boundary between the image and the protocol."
 	^ [ | method receiver |
 		method := descriptor methodReference.
 		receiver := method classIsMeta

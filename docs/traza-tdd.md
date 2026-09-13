@@ -237,34 +237,51 @@ el puerto tomado y el nuevo no escucha. Hay que esperar entre `destroy` y `start
 4. **Los requisitos que faltaban:** el paquete usaba `WebServer` (de `WebClient`) y no
 lo declaraba, y el de tests no declaraba que necesita `MCPServer`. Ahora sí.
 
-## La firma de los cambios del agente (ciclo 28)
+## La firma de los cambios del agente: se probó y se descartó (ciclos 28 y 29)
 
 Un servidor MCP no puede contestar diálogos, y el primer diálogo de toda imagen nueva es
 el autor: la primera vez que alguien cambia código, Cuis lo pide (`Utilities>>setAuthor`,
 que se queda esperando para siempre). Documentarlo no alcanza: nos mordió dos veces el
 mismo día.
 
-Ahora, al arrancar, el servidor firma los cambios del agente. `start` llama a
-`MCPServerEnvironment useAgentSignature`, que compone la firma con el autor que ya tenga
-la imagen, para poder distinguir lo que escribió el agente de lo que escribió su dueño:
+El primer intento fue **firmar los cambios del agente**: al arrancar, el servidor se ponía
+de autor `MCP(<iniciales del dueño>)`, y se verificó que el stamp sale así, al lado del
+del dueño:
 
 ```
 !MCPServerBrowserToolsScratch methodsFor: 'test' stamp: 'MCP(S.V.) 13/Sep/2026 20:01:17'!
 !MCPServerBrowserToolsTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 15:41:59'!
 ```
 
-| # | Test | Rojo | Verde | Qué se implementó |
-| --- | --- | --- | --- | --- |
-| 28 | la firma del agente: conserva las iniciales del dueño, sin autor es sólo el agente y no se compone sobre sí misma; y arrancar el servidor firma | `MCPServerEnvironment class>>authorSignature`, y después el test del arranque | 43/43 | `agentInitials`, `agentName`, `authorSignature` y `useAgentSignature` en el entorno; `MCPServer>>start` la usa |
+**Y se descartó**, por una razón de fondo que trajo Sebastian: el autor significa
+**responsabilidad**, y la responsabilidad es de quien autoriza el cambio, escriba con la
+herramienta que escriba. Firmar distinto es desligarse: es la misma convención que git,
+donde el commit lleva el nombre del humano aunque lo haya escrito con una herramienta, y
+la ayuda de la herramienta se anota en el mensaje, no en el autor.
 
-Dos detalles que vinieron del entorno:
+La decisión quedó así:
 
-- **`Utilities authorInitials` pregunta si no hay autor** (y ese es justo el diálogo que
-  cuelga el pedido). El que lee sin preguntar es **`authorInitialsPerSe`**, que contesta
-  el valor crudo, vacío o nil. Con eso, componer la firma no puede colgarse.
-- **La composición se fija si la firma ya es del agente** antes de armarla, así que nunca
-  queda `MCP(MCP(S.V.))`. Efecto lateral útil: si el dueño cambia su autor después, la
-  próxima escritura del agente se compone con el nuevo.
+- **El paquete no firma ni inventa un autor.** Lo que el agente escribe queda a nombre de
+  quien es dueño de la imagen.
+- **Al arrancar, el servidor exige que haya autor**: lo lee con `authorInitialsPerSe` (que
+  no pregunta) y, si falta, no arranca y lo dice. El cuelgue silencioso se convierte en un
+  error explícito, al arrancar.
+- **La actividad del agente es información, no firma**: va al log del servidor.
+
+### Lo que se aprendió en el camino
+
+- **`Utilities authorInitials` abre el diálogo** si no hay autor; el que lee sin preguntar
+  es **`authorInitialsPerSe`**. Con eso, verificar el autor no puede colgarse.
+- **Firmar alrededor de cada llamada (en `executeWith:`) es un punto único de falla**: un
+  error ahí rompe todas las herramientas, incluidas las puertas con las que uno se repara.
+  Se descartó el enfoque, pero la lección queda: una preocupación transversal no puede
+  tener el poder de romper la operación. (Si algún día vuelve, va *best effort*.)
+- **El stamp se hornea al compilar** (nace con el autor del momento y queda en el
+  `.changes`): no se puede reescribir después. La atribución por firma exige decidir
+  *antes* de ejecutar; la atribución por log, no.
+- **Compilar un test con otro nombre no reemplaza al anterior**: quedaron tres `test06` y
+  el más viejo llamaba a código ya borrado, así que la suite no corría. El nombre del test
+  es su identidad.
 
 ## File out
 

@@ -24,16 +24,6 @@ TestCase subclass: #MCPServerBrowserToolsTest
 MCPServerBrowserToolsTest class
 	instanceVariableNames: ''!
 
-!classDefinition: #MCPServerEnvironmentTest category: #MCPServerTest!
-TestCase subclass: #MCPServerEnvironmentTest
-	instanceVariableNames: ''
-	classVariableNames: ''
-	poolDictionaries: ''
-	category: 'MCPServerTest'!
-!classDefinition: 'MCPServerEnvironmentTest class' category: #MCPServerTest!
-MCPServerEnvironmentTest class
-	instanceVariableNames: ''!
-
 !classDefinition: #MCPServerMethodCommentTest category: #MCPServerTest!
 TestCase subclass: #MCPServerMethodCommentTest
 	instanceVariableNames: ''
@@ -120,9 +110,6 @@ I am the scratch class of the MCPServer tests: the tests define and remove metho
 
 !MCPServerBrowserToolsTest commentStamp: '<historical>' prior: 0!
 I test the Browser facade: the operations a programmer performs from the Browser, exposed as MCP tools.!
-
-!MCPServerEnvironmentTest commentStamp: '<historical>' prior: 0!
-I test the access to the image: the signature the changes of the agent are stamped with, and the classes by name.!
 
 !MCPServerMethodCommentTest commentStamp: '<historical>' prior: 0!
 I test the reader of a method comment, which is where the tool description comes from.!
@@ -299,9 +286,6 @@ test16WritesThePackageToAFile
 	self assert: (text contents findString: 'MCPServerBrowserToolsTest') > 0.
 	(FileEntry withAbsolutePathName: path) delete! !
 
-!MCPServerBrowserToolsTest methodsFor: 'private' stamp: 'S.V. 13/Sep/2026 15:42:06'!
-foo ^ MCPServerBrowserTools new! !
-
 !MCPServerBrowserToolsTest methodsFor: 'private' stamp: 'S.V. 13/Sep/2026 15:43:07'!
 tearDown
 	"The tests define and remove methods in the scratch class: leave it clean."
@@ -310,34 +294,6 @@ tearDown
 	scratch ifNil: [ ^ self ].
 	#(#zap) do: [ :each |
 		(scratch includesSelector: each) ifTrue: [ scratch removeSelector: each ] ]! !
-
-!MCPServerEnvironmentTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 20:01:56'!
-test01KeepsTheHumanInitialsInside
-	"The signature of the agent carries the initials of whoever the image belongs to, so the
-	two are told apart in the stamp of a method."
-	| before |
-	before := Utilities authorInitialsPerSe.
-	[ Utilities setAuthorName: 'Sebastian' initials: 'S.V.'.
-	  self assert: MCPServerEnvironment authorSignature equals: 'MCP(S.V.)' ]
-		ensure: [ Utilities setAuthorName: 'Sebastian' initials: before ]! !
-
-!MCPServerEnvironmentTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 20:01:56'!
-test02WithoutAnAuthorItIsJustTheAgent
-	"An image with no author: the signature is the agent and nothing else."
-	| before |
-	before := Utilities authorInitialsPerSe.
-	[ Utilities setAuthorName: 'x' initials: ''.
-	  self assert: MCPServerEnvironment authorSignature equals: 'MCP' ]
-		ensure: [ Utilities setAuthorName: 'Sebastian' initials: before ]! !
-
-!MCPServerEnvironmentTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 20:01:56'!
-test03DoesNotComposeOverItsOwnSignature
-	"A signature that is already the agent is answered as it is: not MCP(MCP(S.V.))."
-	| before |
-	before := Utilities authorInitialsPerSe.
-	[ Utilities setAuthorName: 'MCP server' initials: 'MCP(S.V.)'.
-	  self assert: MCPServerEnvironment authorSignature equals: 'MCP(S.V.)' ]
-		ensure: [ Utilities setAuthorName: 'Sebastian' initials: before ]! !
 
 !MCPServerMethodCommentTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 12:31:29'!
 test01AnswersTheCommentOfAMethodSource
@@ -481,16 +437,19 @@ test05TwoServersDoNotShareTheirState
 	self deny: (one catalogue toolNamed: #selectors_of_class) notNil.
 	self assert: (another catalogue toolNamed: #selectors_of_class) notNil! !
 
-!MCPServerTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 20:02:13'!
-test06StartingSignsTheChangesOfTheAgent
-	"Starting the server signs the changes of the agent, so they are told apart from the
-	work of whoever owns the image."
-	| server before |
+!MCPServerTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 20:15:59'!
+test06StartingRequiresAnAuthor
+	"Starting does not invent an author: what the agent writes is the responsibility of
+	whoever owns the image, so an image with no author is told, not started."
+	| first second before |
 	before := Utilities authorInitialsPerSe.
-	server := MCPServer on: 8795 tools: { MCPServerWorkspaceTools }.
-	[ server start.
-	  self assert: Utilities authorInitialsPerSe equals: MCPServerEnvironment authorSignature ]
-		ensure: [ server destroy. Utilities setAuthorName: 'Sebastian' initials: before ]! !
+	[ Utilities setAuthorName: 'x' initials: 'S.V.'.
+		first := MCPServer on: 8795 tools: { MCPServerWorkspaceTools }.
+		[ first start. self assert: first port equals: 8795 ] ensure: [ first destroy ].
+		Utilities setAuthorName: 'x' initials: ''.
+		second := MCPServer on: 8795 tools: { MCPServerWorkspaceTools }.
+		self should: [ second start ] raise: Error ]
+		ensure: [ Utilities setAuthorName: 'Sebastian' initials: before ]! !
 
 !MCPServerTestingToolsTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 18:58:42'!
 test01RunsTheTestsOfATestClass

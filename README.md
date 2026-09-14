@@ -89,7 +89,13 @@ headless aparte.
    Changes/Versions, Transcript, File List, Profiler. No inventamos operaciones
    que un programador no tenga a mano: traducimos, sin ventanas, lo que esas
    ventanas ofrecen.
-2. **Todo en inglés**: nombres, descripciones y documentación.
+2. **Todo el código en inglés, ejecutable y comentarios.** Nombres, descripciones,
+   comentarios de método, y el código de todo lo que escribimos: el paquete, el panel de
+   demo, los scripts. Los documentos del repo (este README, la traza, los README de las
+   carpetas) están en español, que es el idioma en el que trabajamos; la frontera es esa:
+   código en inglés, prosa de proyecto en español. Ahora que el borde habla UTF-8, el
+   castellano en un comentario de código *funcionaría*, y justamente por eso hay que
+   decirlo: es una regla, no una limitación.
 3. **El nombre de cada herramienta es la forma snake_case del selector
    Smalltalk que ejecuta la operación.** Regla mecánica: camelCase pasa a
    snake_case y cada `:` se convierte en `_`. Ejemplos verificados en la imagen:

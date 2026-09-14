@@ -1,20 +1,19 @@
 #!/usr/bin/env python3
-"""Panel estilo Swagger para el servidor MCP que vive en la imagen de Cuis.
+"""Swagger-like panel for the MCP server that lives in the Cuis image.
 
-Es un cliente del producto y nada mas: asume que el servidor MCP ya esta corriendo
-dentro de la imagen y le habla por MCP (JSON-RPC sobre HTTP). Lo unico que hay que
-decirle es en que puerto escucha ese servidor.
+It is a client of the product and nothing else: it assumes the MCP server is already running
+inside the image and talks to it over MCP (JSON-RPC on HTTP). The only thing it has to be told
+is the port that server listens on.
 
-Sirve una pagina en http://127.0.0.1:<panel> que:
-  - lista las herramientas del servidor MCP (tools/list),
-  - arma un formulario por herramienta con los campos de su inputSchema,
-  - y tiene un boton para correrla (tools/call) y ver la respuesta.
+It serves a page at http://127.0.0.1:<panel> that:
+  - lists the tools of the MCP server (tools/list),
+  - builds a form per tool with the fields of its inputSchema,
+  - and has a button to run it (tools/call) and see the answer.
 
-La lista es dinamica: sale de tools/list, no hay nombres de herramientas aca. Los
-pedidos al MCP los hace este proceso (no el navegador), asi que no hay problema de
-CORS ni de transporte.
+The list is dynamic: it comes from tools/list, and there are no tool names here. The MCP
+requests are made by this process (not by the browser), so there is no CORS or transport issue.
 
-Uso:
+Usage:
     python3 demo/panel-mcp.py --port 8790 --panel 8899
 """
 import argparse
@@ -22,7 +21,7 @@ import json
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-# Parametros del programa (los llena main).
+# Program parameters (main fills them in).
 MCP_PORT = 8790
 
 _COUNTER = [0]
@@ -88,7 +87,7 @@ async function load() {
   }
 }
 function render(tools) {
-  // Una ventana por item colapsable, y adentro las herramientas que vienen de ahi.
+  // One window per collapsible item, and inside it the tools that come from there.
   const box = document.getElementById('tools');
   const groups = new Map();
   tools.forEach(t => {
@@ -181,7 +180,7 @@ def page():
 
 
 def rpc(method, params=None):
-    """Un pedido JSON-RPC al servidor MCP."""
+    """One JSON-RPC request to the MCP server."""
     _COUNTER[0] += 1
     payload = {"jsonrpc": "2.0", "id": _COUNTER[0], "method": method}
     if params is not None:
@@ -198,7 +197,7 @@ def rpc(method, params=None):
         body = response.read().decode("utf-8", "replace")
         content_type = response.headers.get("Content-Type", "")
     if "text/event-stream" in content_type:
-        # Streamable HTTP puede contestar por SSE: quedarse con el ultimo data:
+        # Streamable HTTP may answer over SSE: keep the last data: line.
         lines = [line[5:].strip() for line in body.splitlines() if line.startswith("data:")]
         body = lines[-1] if lines else ""
     return json.loads(body) if body.strip() else None
@@ -224,7 +223,7 @@ class Handler(BaseHTTPRequestHandler):
                 response = rpc("tools/list") or {}
                 tools = (response.get("result") or {}).get("tools", [])
                 self._send(200, json.dumps(tools))
-            except Exception as error:  # noqa: BLE001 - el panel tiene que poder contarlo
+            except Exception as error:  # noqa: BLE001 - the panel has to be able to report it
                 self._send_error(error)
         else:
             self._send(200, page(), "text/html; charset=utf-8")
@@ -248,19 +247,19 @@ class Handler(BaseHTTPRequestHandler):
 def main():
     global MCP_PORT
     parser = argparse.ArgumentParser(
-        description="Panel para usar a mano el servidor MCP de la imagen de Cuis."
+        description="Panel to use the MCP server of the Cuis image by hand."
     )
-    parser.add_argument("--port", type=int, default=MCP_PORT, help="puerto del servidor MCP")
-    parser.add_argument("--panel", type=int, default=8899, help="puerto de este panel")
+    parser.add_argument("--port", type=int, default=MCP_PORT, help="port of the MCP server")
+    parser.add_argument("--panel", type=int, default=8899, help="port of this panel")
     options = parser.parse_args()
     MCP_PORT = options.port
     try:
         response = rpc("tools/list") or {}
         tools = (response.get("result") or {}).get("tools", [])
-        print(f"MCP en el puerto {MCP_PORT}: {len(tools)} herramientas", flush=True)
-    except Exception as error:  # noqa: BLE001 - el panel sirve igual, para poder verlo
-        print(f"MCP en el puerto {MCP_PORT}: no contesta ({error})", flush=True)
-    print(f"Panel en http://127.0.0.1:{options.panel}", flush=True)
+        print(f"MCP on port {MCP_PORT}: {len(tools)} tools", flush=True)
+    except Exception as error:  # noqa: BLE001 - the panel still serves, so it can be seen
+        print(f"MCP on port {MCP_PORT}: not answering ({error})", flush=True)
+    print(f"Panel on http://127.0.0.1:{options.panel}", flush=True)
     ThreadingHTTPServer(("127.0.0.1", options.panel), Handler).serve_forever()
 
 

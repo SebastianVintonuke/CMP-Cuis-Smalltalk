@@ -204,11 +204,11 @@ wasSuspendedWhenRegistered
 tearDown
 	"The tests define and remove methods and classes in the scratch class: leave it clean."
 	| scratch |
-	#(#MCPPruebaDeClase #MCPPruebaRenombrada) do: [ :name |
+	#(#MCPScratchDefinedClass #MCPScratchRenamedClass) do: [ :name |
 		(Smalltalk at: name ifAbsent: [ nil ]) ifNotNil: [ :each | each removeFromSystem ] ].
 	scratch := Smalltalk at: #MCPServerBrowserToolsScratch ifAbsent: [ nil ].
 	scratch ifNil: [ ^ self ].
-	#(#zap #pruebaConAcento) do: [ :each |
+	#(#zap #accentedString) do: [ :each |
 		(scratch includesSelector: each) ifTrue: [ scratch removeSelector: each ] ]
 ! !
 
@@ -351,20 +351,37 @@ test15ClassifiesAMethodUnderACategory
 	MCPServerBrowserTools new
 		classifyMethod: 'zap'
 		inClass: 'MCPServerBrowserToolsScratch'
-		under: 'prueba'.
-	self assert: (scratch organization categoryOfElement: #zap) equals: #prueba! !
+		under: 'scratch'.
+	self assert: (scratch organization categoryOfElement: #zap) equals: #scratch! !
 
-!MCPServerBrowserToolsTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 18:59:04'!
+!MCPServerBrowserToolsTest methodsFor: 'private' stamp: 'S.V. 14/Sep/2026 03:00:00'!
+fileOutPathNamed: aFileName
+	"Private. The path of a temporary file-out: in the user files directory of Cuis, which exists on
+	every platform, instead of a system directory that only some platforms have."
+	DirectoryEntry userBaseDirectory assureExistence.
+	^ (DirectoryEntry userBaseDirectory // aFileName) pathName
+! !
+
+!MCPServerBrowserToolsTest methodsFor: 'private' stamp: 'S.V. 14/Sep/2026 03:00:00'!
+removeFileAt: aPath
+	"Private. Remove a temporary file-out, if the test got as far as writing it."
+	| file |
+	file := FileEntry withAbsolutePathName: aPath.
+	file exists ifTrue: [ file delete ]
+! !
+
+!MCPServerBrowserToolsTest methodsFor: 'testing' stamp: 'S.V. 14/Sep/2026 03:00:00'!
 test16WritesThePackageToAFile
-	"The file out: the package goes to a file, so the code also lives outside the image."
+	"The file out: the package goes to a file, so the code also lives outside the image. The file is
+	removed afterwards, even when an assertion fails."
 	| path text |
-	path := '/tmp/MCPServerTest-de-prueba.pck.st'.
-	MCPServerBrowserTools new fileOutPackage: 'MCPServerTest' to: path.
-	text := WriteStream on: String new.
-	(FileEntry withAbsolutePathName: path) readStreamDo: [ :stream | text nextPutAll: stream upToEnd ].
-	self assert: (text contents findString: '!!provides: ''MCPServerTest''') > 0.
-	self assert: (text contents findString: 'MCPServerBrowserToolsTest') > 0.
-	(FileEntry withAbsolutePathName: path) delete! !
+	path := self fileOutPathNamed: 'MCPServerTest-fileout.pck.st'.
+	[ MCPServerBrowserTools new fileOutPackage: 'MCPServerTest' to: path.
+	  text := WriteStream on: String new.
+	  (FileEntry withAbsolutePathName: path) readStreamDo: [ :stream | text nextPutAll: stream upToEnd ].
+	  self assert: (text contents findString: '!!provides: ''MCPServerTest''') > 0.
+	  self assert: (text contents findString: 'MCPServerBrowserToolsTest') > 0 ]
+		ensure: [ self removeFileAt: path ]! !
 
 !MCPServerBrowserToolsTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 20:55:04'!
 test18AnswersTheClassesOfACategory
@@ -395,31 +412,32 @@ test21DefinesAClass
 	"The class pane can create a class: name, superclass, instance variables and category."
 	| class |
 	MCPServerBrowserTools new
-		defineClass: 'MCPPruebaDeClase'
+		defineClass: 'MCPScratchDefinedClass'
 		subclassOf: 'Object'
 		variables: 'x y'
 		category: 'MCPServerTest'.
-	class := Smalltalk at: #MCPPruebaDeClase.
+	class := Smalltalk at: #MCPScratchDefinedClass.
 	self assert: class superclass name equals: 'Object'.
 	self assert: class instVarNames asArray equals: #(#x #y).
 	self assert: class category equals: #MCPServerTest
 ! !
 
-!MCPServerBrowserToolsTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 21:24:02'!
+!MCPServerBrowserToolsTest methodsFor: 'testing' stamp: 'S.V. 14/Sep/2026 03:00:00'!
 test21WritesTheFileOutAsUtf8
 	"The file out writes UTF-8, which is what the repository and the editors expect, and what a
 	file-in expects on the way back. The accent is built from its code point, because this source
 	travels through the same boundary. The file is decoded as UTF-8 and the accent has to be
-	there; in latin-1 it would come out as two characters."
+	there; in latin-1 it would come out as two characters. The file is removed afterwards."
 	| accent path text scratch |
 	accent := String with: (Character codePoint: 233).
 	scratch := MCPServerBrowserToolsScratch.
-	scratch compile: 'pruebaConAcento ^ ''caf', accent, '''' classified: 'testing'.
-	path := '/tmp/MCPServerTest-con-acento.pck.st'.
-	MCPServerBrowserTools new fileOutPackage: 'MCPServerTest' to: path.
-	text := WriteStream on: String new.
-	(FileEntry withAbsolutePathName: path) readStreamDo: [ :stream | text nextPutAll: stream upToEnd ].
-	self assert: ((String fromUtf8Bytes: text contents asByteArray) findString: accent) > 0
+	scratch compile: 'accentedString ^ ''caf', accent, '''' classified: 'testing'.
+	path := self fileOutPathNamed: 'MCPServerTest-utf8.pck.st'.
+	[ MCPServerBrowserTools new fileOutPackage: 'MCPServerTest' to: path.
+	  text := WriteStream on: String new.
+	  (FileEntry withAbsolutePathName: path) readStreamDo: [ :stream | text nextPutAll: stream upToEnd ].
+	  self assert: ((String fromUtf8Bytes: text contents asByteArray) findString: accent) > 0 ]
+		ensure: [ self removeFileAt: path ]
 ! !
 
 !MCPServerBrowserToolsTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 20:57:00'!
@@ -436,26 +454,26 @@ test22RefusesToDefineAClassThatAlreadyExists
 test23RemovesAClass
 	"The class pane can remove a class."
 	MCPServerBrowserTools new
-		defineClass: 'MCPPruebaDeClase'
+		defineClass: 'MCPScratchDefinedClass'
 		subclassOf: 'Object'
 		variables: ''
 		category: 'MCPServerTest'.
-	MCPServerBrowserTools new removeClass: 'MCPPruebaDeClase'.
-	self deny: (Smalltalk includesKey: #MCPPruebaDeClase)
+	MCPServerBrowserTools new removeClass: 'MCPScratchDefinedClass'.
+	self deny: (Smalltalk includesKey: #MCPScratchDefinedClass)
 ! !
 
 !MCPServerBrowserToolsTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 20:57:00'!
 test24RenamesAClass
 	"The class pane can rename a class, keeping its category."
 	MCPServerBrowserTools new
-		defineClass: 'MCPPruebaDeClase'
+		defineClass: 'MCPScratchDefinedClass'
 		subclassOf: 'Object'
 		variables: ''
 		category: 'MCPServerTest'.
-	MCPServerBrowserTools new renameClass: 'MCPPruebaDeClase' to: 'MCPPruebaRenombrada'.
-	self assert: (Smalltalk includesKey: #MCPPruebaRenombrada).
-	self deny: (Smalltalk includesKey: #MCPPruebaDeClase).
-	self assert: (Smalltalk at: #MCPPruebaRenombrada) category equals: #MCPServerTest
+	MCPServerBrowserTools new renameClass: 'MCPScratchDefinedClass' to: 'MCPScratchRenamedClass'.
+	self assert: (Smalltalk includesKey: #MCPScratchRenamedClass).
+	self deny: (Smalltalk includesKey: #MCPScratchDefinedClass).
+	self assert: (Smalltalk at: #MCPScratchRenamedClass) category equals: #MCPServerTest
 ! !
 
 !MCPServerInFlightRequestsTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 23:40:09'!
@@ -800,19 +818,23 @@ test05TwoServersDoNotShareTheirState
 	self deny: (one catalogue toolNamed: #selectors_of_class) notNil.
 	self assert: (another catalogue toolNamed: #selectors_of_class) notNil! !
 
-!MCPServerTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 20:15:59'!
+!MCPServerTest methodsFor: 'testing' stamp: 'S.V. 14/Sep/2026 03:00:00'!
 test06StartingRequiresAnAuthor
 	"Starting does not invent an author: what the agent writes is the responsibility of
-	whoever owns the image, so an image with no author is told, not started."
-	| first second before |
-	before := Utilities authorInitialsPerSe.
-	[ Utilities setAuthorName: 'x' initials: 'S.V.'.
+	whoever owns the image, so an image with no author is told, not started.
+	The test changes the author of the image, so it puts back the name and the initials it found.
+	Utilities answers the initials without asking (authorInitialsPerSe), but its reader of the name
+	opens a dialog when there is none, so the name is read from the class variable instead."
+	| first second initialsBefore nameBefore |
+	initialsBefore := Utilities authorInitialsPerSe.
+	nameBefore := Utilities classPool at: #AuthorName ifAbsent: [ nil ].
+	[ Utilities setAuthorName: 'MCPServer Test' initials: 'MCPT'.
 		first := MCPServer on: 8795 tools: { MCPServerWorkspaceTools }.
 		[ first start. self assert: first port equals: 8795 ] ensure: [ first destroy ].
-		Utilities setAuthorName: 'x' initials: ''.
+		Utilities setAuthorName: 'MCPServer Test' initials: ''.
 		second := MCPServer on: 8795 tools: { MCPServerWorkspaceTools }.
 		self should: [ second start ] raise: Error ]
-		ensure: [ Utilities setAuthorName: 'Sebastian' initials: before ]! !
+		ensure: [ Utilities setAuthorName: nameBefore initials: initialsBefore ]! !
 
 !MCPServerTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 20:46:29'!
 test07StartingTwiceSaysItIsAlreadyListening

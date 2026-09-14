@@ -1,523 +1,144 @@
-# CMP-Cuis-Smalltalk
+# MCPServer for Cuis Smalltalk
+
+An experimental [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that runs inside a live Cuis Smalltalk image. It exposes operations of the image's development tools (Workspace, Browser and Test Runner) as MCP tools, so that an AI agent can read, change and test code in the same image a programmer is using.
+
+## Status: proof of concept
+
+This is a short experiment, not a product. Its purpose was to explore what it takes for an agent to work inside a running Smalltalk image alongside a person, to find the problems that appear, and to propose or implement solutions for them. The code is a working prototype; the documentation records the reasoning and the trade-offs behind it.
+
+It is not suitable for production or shared use. The main limitations:
+
+- **No sandbox, and access control is the loopback interface only.** `print_it` evaluates arbitrary code by design, and any local process that can connect to the port controls the image. There is no authentication and no `Origin` validation ([D2](docs/decisions.md#d2-control-access-not-operations)).
+- **No detection of conflicting edits.** If the human and the agent change the same method, the later compile silently replaces the earlier one ([O1](docs/findings.md#o1-concurrent-edits-by-the-human-and-the-agent)).
+- **A subset of the HTTP transport.** JSON responses to `POST` only: no server-sent events, no `GET`, no MCP sessions. The design assumes a single client ([deferred scope](docs/decisions.md#deferred-and-out-of-scope)).
+- **No undo beyond the image's own change log.** Cancelling a call stops it but does not revert what it already changed ([D7](docs/decisions.md#d7-cancellation-belongs-to-the-client)).
+- **The server does not survive saving and reopening the image** ([O2](docs/findings.md#o2-stale-server-handles-and-silent-listeners)).
+
+The package was developed test-first with an AI coding agent working under the author's direction; see [development process](docs/development-log.md#development-process).
+
+## Motivation
+
+One way to connect an agent to Smalltalk is to use the image as a remote interpreter: the agent sends code and reads results, often from a separate headless image. This experiment explores a different arrangement. The user opens their usual image, with its windows, state and unsaved work, loads the package and starts a server. The agent then works inside that image: it browses classes, reads and compiles methods and runs tests, while the human sees the changes in the usual tools and can keep working, correct them or undo them.
+
+That choice shapes most of the design. The agent and the human share one VM ([D1](docs/decisions.md#d1-run-inside-the-interactive-image-over-http)), and the agent has the same capabilities as the programmer, including the ability to break the image ([D2](docs/decisions.md#d2-control-access-not-operations)).
+
+## What is implemented
+
+**Protocol.** MCP version `2025-06-18`: `initialize` (with `instructions`), `ping`, `tools/list`, `tools/call` and `notifications/cancelled`, over HTTP `POST` at `/mcp` on `127.0.0.1`. See [request handling](docs/architecture.md#request-handling).
+
+**Tools.** 19 tools in three facades. Each one corresponds to an operation of a Cuis tool window ([D3](docs/decisions.md#d3-model-tools-on-ide-operations-at-the-domain-layer)) and is declared by a pragma on the method that implements it ([D4](docs/decisions.md#d4-declare-each-tool-once-on-its-implementing-method)).
+
+| Window | Tool | Implementing selector | What it does |
+| --- | --- | --- | --- |
+| Workspace | `print_it` | `printIt:` | Evaluates code and answers the printed result, up to 10,000 characters. |
+| Browser | `selectors_of_class` | `selectorsOfClass:` | Lists the selectors of both sides of a class, by method category. |
+| Browser | `source_of_method_in_class` | `sourceOfMethod:inClass:` | Answers the source of a method, with its comment and pragmas. |
+| Browser | `comment_of_class` | `commentOfClass:` | Answers the class comment. |
+| Browser | `hierarchy_of_class` | `hierarchyOfClass:` | Answers the superclass chain and the direct subclasses. |
+| Browser | `classes_in_category` | `classesInCategory:` | Lists the classes of a system category. |
+| Browser | `classes_matching` | `classesMatching:` | Lists the classes whose name contains a text. |
+| Browser | `all_calls_on` | `allCallsOn:` | Lists the senders of a selector. |
+| Browser | `all_implementors_of` | `allImplementorsOf:` | Lists the implementors of a selector. |
+| Browser | `methods_containing` | `methodsContaining:` | Lists the methods whose source contains a text. |
+| Browser | `compile_method_in_class_classified` | `compileMethod:inClass:classified:` | Compiles a method source in a class, under a method category. |
+| Browser | `classify_method_in_class_under` | `classifyMethod:inClass:under:` | Moves a method to another method category. |
+| Browser | `remove_method_in_class` | `removeMethod:inClass:` | Removes a method from a class. |
+| Browser | `define_class_subclass_of_variables_category` | `defineClass:subclassOf:variables:category:` | Defines a new class; refuses to redefine an existing one. |
+| Browser | `rename_class_to` | `renameClass:to:` | Renames a class; references to it follow. |
+| Browser | `remove_class` | `removeClass:` | Removes a class and its methods. |
+| Browser | `file_out_package_to` | `fileOutPackage:to:` | Writes the package of a category to a file. |
+| Test Runner | `run_tests_in_class` | `runTestsInClass:` | Runs the tests of a test class and answers the counts and defects. |
+| Test Runner | `run_tests_in_category` | `runTestsInCategory:` | Runs every test class of a category. |
+
+Listing tools answer at most 100 entries. In tools that read or edit methods, a class name ending in ` class` (for example `Object class`) refers to the class side, as in the Browser.
+
+**Behavior.**
+
+- Tool calls run in a worker process below the UI priority, so the human's interface keeps the CPU ([D6](docs/decisions.md#d6-run-agent-work-below-the-ui-priority)).
+- The client that issued a call can cancel it while it runs ([D7](docs/decisions.md#d7-cancellation-belongs-to-the-client)).
+- Request and response bodies are decoded and encoded as UTF-8 at the HTTP boundary ([F2](docs/findings.md#f2-request-and-response-bodies-were-not-utf-8)).
+- The server does not start in an image without an author ([D9](docs/decisions.md#d9-attribute-changes-to-the-image-owner)), and does not take over a port held by another listener ([D8](docs/decisions.md#d8-do-not-take-host-resources)).
+- A tool that raises an error answers a result with `isError: true`; the request itself succeeds.
+
+**Tests.** 70 SUnit tests in 10 test classes, covering the facades, the protocol and the HTTP adapter, including cancellation over HTTP ([testing](docs/architecture.md#testing)).
+
+## Getting started
+
+**Requirements.**
+
+- Cuis Smalltalk 7.8, the version used in the experiment. The package declares `WebClient` and `JSON` as requirements, so the image must be able to find those packages.
+- The VM launched with `-encoding UTF-8`, as the Cuis launcher does, so that file-outs are written as UTF-8.
+- An author set in the image, for example `Utilities setAuthorName: 'Ada Lovelace' initials: 'AL'`. The server refuses to start without one.
+- Python 3, only for the optional [demo panel](demo/README.md).
+
+**Load the package.** Put `src/MCPServer.pck.st`, and `src/MCPServerTest.pck.st` if you want the tests, where `Feature require:` looks for packages; the experiment used the image's `Packages/Features` directory. Then evaluate in a Workspace:
+
+```smalltalk
+Feature require: 'MCPServer'.
+```
+
+**Start a server.**
+
+```smalltalk
+| server |
+server := MCPServer
+	on: 8790
+	tools: { MCPServerWorkspaceTools. MCPServerBrowserTools. MCPServerTestingTools }.
+server start.
+Smalltalk at: #MCPDemo put: server
+```
+
+The server exposes the tools declared by the facade classes given in `tools:`. The endpoint is `http://127.0.0.1:8790/mcp`.
+
+**Connect a client.** MCP clients that use HTTP can connect to that URL, within the transport limits listed above; the MCP Inspector was used during the experiment. The repository also includes a small panel that lists the tools, runs them from a form and cancels running calls: see [demo/README.md](demo/README.md).
+
+**Stop the server.**
+
+```smalltalk
+(Smalltalk at: #MCPDemo) destroy
+```
+
+`destroy` releases the port. Two caveats, both described in [O2](docs/findings.md#o2-stale-server-handles-and-silent-listeners):
+
+- Do not destroy a server from a call it is serving (for example, through `print_it`). The socket can stay open with no process accepting connections.
+- A server does not survive saving and reopening the image. Afterwards the global still refers to the server object, which answers its port and tools although nothing is listening. Create and start a new server.
+
+### Freeing a port held by a stale server
+
+If `start` reports that the port is taken, the server does not free it by itself ([D8](docs/decisions.md#d8-do-not-take-host-resources)). To release it from the image, destroy the `WebServer` that is listening on it:
+
+```smalltalk
+WebServer allInstances do: [ :each |
+	(each listenerProcess isNil not and: [ each listenerPort = 8790 ]) ifTrue: [ each destroy ] ]
+```
+
+## Running the tests
+
+```smalltalk
+Feature require: 'MCPServerTest'.
+```
+
+Run the `MCPServerTest` category from the Test Runner, or through the server with the `run_tests_in_category` tool. Through the tool, a test that raises an unexpected error may abort the run instead of being counted ([O7](docs/findings.md#o7-errors-that-do-not-surface)). The tests run in the live image and have side effects:
+
+- they start servers on `127.0.0.1`, ports 8791 and 8795 to 8797;
+- they write temporary file-outs to the Cuis user files directory (`DirectoryEntry userBaseDirectory`) and remove them;
+- they compile and remove methods in `MCPServerBrowserToolsScratch`, and define, rename and remove temporary classes;
+- they change the image author while `MCPServerTest>>test06StartingRequiresAnAuthor` runs, and restore it afterwards.
+
+## Repository layout
 
 ```
-This server connects you to a living Smalltalk environment. You are not editing static files in isolation; you are collaborating inside a running system alongside a human. Every change you make is immediately alive and present in their world. The system hides nothing from you. You possess the absolute freedom to redefine its very fabric on the fly. However, this profound malleability means that a careless action can shatter the environment. Keep in mind that every modification carries the human's signature. They are staking their name on your work, so act with thoughtful judgment.
+src/MCPServer.pck.st       the MCPServer package (13 classes)
+src/MCPServerTest.pck.st   the tests (10 test classes and 2 helpers)
+demo/panel-mcp.py          manual test panel (Python 3 standard library)
+demo/cancel-demo.st        a long-running call for trying cancellation
+docs/                      design documentation
 ```
 
-Servidor MCP para Cuis Smalltalk. El paquete se va a llamar `MCPServer`.
-
-## La idea
-
-Llevar la IA **dentro** del entorno Smalltalk, no usar Smalltalk como un
-intérprete al que se le piden cosas.
-
-El usuario abre **su** imagen: la de siempre, con su UI, su estado, su trabajo
-sin guardar. Carga el paquete `MCPServer`, crea un objeto con parámetros, y un
-agente se conecta y trabaja **dentro de esa imagen**: navega clases, lee código,
-compila métodos, corre tests. El humano ve todo en vivo — las ventanas, los
-cambios, los tests — y puede seguir trabajando en paralelo, corregir o deshacer.
-
-La diferencia con "una IA que usa Smalltalk como intérprete" es de fondo: acá la
-imagen es el lugar de trabajo compartido entre el humano y el agente, no una
-caja negra que devuelve resultados. El foco es el entorno.
-
-**Decisión filosófica: el agente está expuesto a los mismos riesgos que el
-programador.** No se lo trata como algo distinto ni se lo protege de lo que el
-humano tampoco está protegido. Si el agente puede escribir un bucle que congele
-la imagen, el humano puede escribir el mismo bucle en un Workspace. Si el
-agente puede romper una clase del núcleo, el humano también. Lo que el diseño
-tiene que garantizar no es la imposibilidad de romper sino la
-**visibilidad** (que se vea qué hizo), la **atribución** (saber que fue el
-agente) y la **reversibilidad** (poder deshacerlo), que es exactamente la
-relación que un programador tiene con su imagen.
-
-## Cómo se usa (objetivo)
-
-1. Abrís tu imagen de Cuis.
-2. Cargás el paquete `MCPServer`.
-3. Creás el servidor con sus parámetros (puerto, qué herramientas expone, qué
-   permisos tiene).
-4. El agente se conecta y trabaja en tu imagen; vos ves todo en vivo.
-
-El transporte decidido es HTTP: el servidor vive dentro de la imagen y expone un
-endpoint (MCP sobre HTTP). No hace falta ningún proceso puente ni una imagen
-headless aparte.
-
-## Estado
-
-- **El paquete existe**: `src/MCPServer.pck.st` (12 clases de producción) y
-  `src/MCPServerTest.pck.st` (9 clases de test, más la clase de trabajo de los tests),
-  con **trece herramientas** en tres fachadas:
-  - *Workspace*: `print_it`.
-  - *Browser*: `selectors_of_class`, `source_of_method_in_class`, `comment_of_class`,
-    `all_calls_on`, `all_implementors_of`, `hierarchy_of_class`,
-    `compile_method_in_class_classified`, `remove_method_in_class`,
-    `classify_method_in_class_under`, `file_out_package_to`, `classes_in_category`,
-    `classes_matching`, `methods_containing`, `define_class_subclass_of_variables_category`,
-    `remove_class` y `rename_class_to`.
-  - *Test Runner*: `run_tests_in_class` y `run_tests_in_category`.
-
-  Cada herramienta se declara con un pragma, su descripción es el comentario del método
-  que la implementa, y en su `_meta` dice de qué ventana de la imagen viene.
-- **Flujo MCP funcionando**: `initialize`, `tools/list` y `tools/call` sobre HTTP en
-  `/mcp`, verificado contra la imagen viva. Para levantarlo: `MCPServer on: 8790 tools:
-  { MCPServerWorkspaceTools. MCPServerBrowserTools. MCPServerTestingTools }` y `start`;
-  se apaga con `destroy`, que libera el puerto. Arrancar dos veces, o un puerto que ya está
-  tomado, son errores que se dicen con su mensaje: mover el servidor es decisión de quien es
-  dueño de la imagen, y el servidor no toma puertos de nadie.
-- **Dependencias declaradas**: `MCPServer` pide `WebClient` y `JSON`, y el paquete de
-  tests pide `MCPServer`, así que `Feature require: 'MCPServer'` trae todo.
-- **El autor de los cambios es de quien autoriza**: el paquete no firma distinto ni
-  inventa un autor. Lo que el agente escribe queda a nombre del dueño de la imagen, que es
-  de quien es la responsabilidad, y **al arrancar el servidor exige que haya un autor**: si
-  falta, no arranca y lo dice. La actividad del agente es información, no firma: va al log
-  del servidor.
-- **El ciclo de trabajo se hace por MCP**: leer, escribir, correr los tests y exportar,
-  todo a través del servidor. No hace falta ningún endpoint aparte en la imagen.
-- La traza del trabajo TDD (los 21 ciclos, los rojos y verdes, lo que encontró el
-  e2e) está en `docs/traza-tdd.md`.
-- Para probarlo a mano hay un panel chico en `demo/` (lista las herramientas, las
-  corre con un formulario, estilo Swagger, y **cancela** la llamada que está corriendo por su
-  identificador de pedido): `python3 demo/panel-mcp.py`. Detalles en `demo/README.md`.
-- El spike y las notas de trabajo viven en `~/OpenClawWorkshop/cmp-cuis-notas/`
-  (fuera de este repo).
-- Para mirar los resultados a mano usamos el **MCP Inspector** oficial: se conecta
-  al servidor, lista las herramientas y permite invocarlas desde una UI web.
-
-## Decisiones de diseño
-
-1. **La interfaz tiene que ser la analogía más perfecta posible a las
-   herramientas visuales que el sistema ya ofrece.** Cada herramienta que
-   expongamos tiene que existir de verdad en una ventana de Cuis: System Browser,
-   Debugger, Inspector, Workspace, Test Runner, Process Browser,
-   Changes/Versions, Transcript, File List, Profiler. No inventamos operaciones
-   que un programador no tenga a mano: traducimos, sin ventanas, lo que esas
-   ventanas ofrecen.
-2. **Todo el código en inglés, ejecutable y comentarios.** Nombres, descripciones,
-   comentarios de método, y el código de todo lo que escribimos: el paquete, el panel de
-   demo, los scripts. Los documentos del repo (este README, la traza, los README de las
-   carpetas) están en español, que es el idioma en el que trabajamos; la frontera es esa:
-   código en inglés, prosa de proyecto en español. Ahora que el borde habla UTF-8, el
-   castellano en un comentario de código *funcionaría*, y justamente por eso hay que
-   decirlo: es una regla, no una limitación.
-3. **El nombre de cada herramienta es la forma snake_case del selector
-   Smalltalk que ejecuta la operación.** Regla mecánica: camelCase pasa a
-   snake_case y cada `:` se convierte en `_`. Ejemplos verificados en la imagen:
-   `spyOn:` → `spy_on`, `browseAllCallsOn:` → `browse_all_calls_on`,
-   `removeSelector:` → `remove_selector`, `createInstVarAccessors` →
-   `create_inst_var_accessors`, `toggleBreakOnEntry` → `toggle_break_on_entry`,
-   `terminateProcess` → `terminate_process`. El nombre no puede llevar `:`
-   porque los clientes validan el identificador de la herramienta.
-4. **`_meta.system` dice en qué ventana vive la herramienta**, incluido
-   Workspace para `evaluate`. Si la misma operación está en más de una ventana,
-   se listan todas.
-5. **`evaluate` es el Workspace.** *(Escrita así el 13/09 temprano.)* Se expone, pero la
-   interfaz expresa que lo esperable es pasar por las herramientas específicas; `evaluate` es
-   la particularidad, no la puerta principal.
-
-   **Evaluación y resolución (13/09, noche).** La decisión nació para regular una excepción a
-   nuestra propia regla de nombres: `evaluate` es un nombre estándar, que un agente reconoce sin
-   pensar, y por eso iba a necesitar una aclaración. Pero lo implementamos como `print_it`, que
-   es el mensaje real del Workspace, y entonces la excepción desapareció: ya no es una puerta
-   principal ni una particularidad, es **una operación de ventana más**, como renombrar una
-   clase. La preferencia emerge del catálogo —cada herramienta se declara con su descripción y
-   su esquema—, así que no hay que proclamarla; y una advertencia del servidor sería, además,
-   ponerle al agente una regla que al humano no se le pone.
-
-   Lo que sí sigue valiendo, y es de donde venía la decisión, es lo otro: con `print_it` se
-   puede todo, así que **las herramientas no son un sandbox**. La defensa no está en lo que las
-   herramientas permiten, sino en quién puede llegar al servidor.
-
-   **Por qué no se agrega ninguna advertencia (idea de Sebastian).** Si un programador fuera lo
-   suficientemente hábil y confiado como para programar todo desde el Workspace, lo haría:
-   saltaría la interfaz visual y no perdería nada, porque es exactamente lo que la ventana le
-   permite. Establecer esa limitación del lado de las herramientas sería decirle al agente "no
-   hagas lo que el humano sí puede hacer", y eso no tiene sentido. Que no haya advertencia no
-   nos quita responsabilidad: la nuestra es ofrecer este conjunto de herramientas masticadas, del
-   mismo modo en que los que diseñaron Smalltalk nos dieron el Browser y no sólo una consola. El
-   Browser no reemplaza al Workspace: se apoya en él.
-6. **Futuro, no ahora:** `annotations` (`readOnlyHint`, `destructiveHint`,
-   `idempotentHint`, `openWorldHint`) y la lista dinámica de herramientas
-   (`notifications/tools/list_changed`) para expresar permisos. Se anota para
-   definir más adelante.
-7. **La herramienta se ancla en la capa lógica, no en el mensaje de la ventana.**
-   El nombre y la semántica salen del mensaje que *hace* el trabajo sobre el
-   modelo, no del menú que lo dispara. Ejemplos verificados: borrar un método es
-   `removeSelector:` (comportamiento de la clase), no `removeMessage` del Browser;
-   compilar es `compile:classified:`; los senders son `allCallsOn:` (los datos),
-   no `browseAllCallsOn:` (que abre la ventana). La ventana queda como
-   procedencia (`_meta.system`) y el pragma anota también el mensaje lógico, así
-   la cadena completa queda registrada: herramienta → mensaje lógico → modelo →
-   ventana.
-   **Excepción razonada:** en el Debugger el vocabulario del programador es el del
-   propio Debugger (`step`, `stepIntoBlock`, `send`, `restart`, `proceed`), así que
-   ahí se usa ese vocabulario y el pragma anota los mensajes de proceso que
-   ejecuta (`completeStep:`, `stepToSendOrReturn`, `restartTop`, `popTo:`).
-
-   La separación modelo/vista en Cuis, verificada en la imagen:
-
-   | Modelo | Categoría | Superclase | Ventana |
-   | --- | --- | --- | --- |
-   | `Browser` | `Tools-Browser` | `CodeProvider` | `BrowserWindow` < `CodeWindow` |
-   | `MethodSet`, `MethodReference` | `Tools-Browser` | `CodeProvider` / `Object` | `MethodSetWindow` |
-   | `Debugger` | `Tools-Debugger` | `CodeProvider` | `DebuggerWindow` < `CodeWindow` |
-   | `Inspector` | `Tools-Inspector` | `TextProvider` | `InspectorWindow` |
-   | `TestRunner` | `Tools-Testing` | `ActiveModel` | `TestRunnerWindow` |
-   | `ProcessBrowser` | `Tools-Profiling` | `ActiveModel` | `ProcessBrowserWindow` |
-   | `Workspace` | `System-Text` | `TextModel` | `WorkspaceWindow` |
-
-   Todas las ventanas viven en `Morphic-Tool Windows`. Y el detalle fino:
-   `CodeProvider` (en `System-Text`) es el protocolo que las ventanas de código
-   consumen, y tanto `Browser` como `Debugger` son `CodeProvider` — por eso
-   comparten ventana (`CodeWindow`).
-
-   **Agrupación:** usamos como grupo la categoría `Tools-*` del modelo
-   (`Tools-Browser`, `Tools-Debugger`, `Tools-Inspector`, `Tools-Testing`,
-   `Tools-Profiling`). Es la taxonomía que la imagen ya tiene, no una inventada.
-   Los casos raros se respetan: `Workspace` está en `System-Text`.
-8. **La documentación humana se genera desde el mismo pragma.** Un catálogo en
-   markdown dentro del repo, y un documento **OpenAPI 3.1** que se puede leer con
-   Swagger UI o Redoc: los schemas de MCP ya son JSON Schema, así que la
-   conversión es directa (el precedente `open-webui/mcpo` hace exactamente ese
-   mapeo). Para probar el servidor a mano, el **MCP Inspector** oficial de
-   Anthropic. Una sola fuente de verdad, tres vistas: MCP para el agente,
-   markdown y OpenAPI para el humano.
-9. **La interfaz se para en la capa del dominio y no maneja estado de ventana.**
-   Los modelos `Tools-*` mezclan los comandos con el estado de la interacción: en
-   Cuis `Browser>>removeMessage` no recibe argumentos, porque saca la clase y el
-   selector de su propia selección (`selectedClass`, `selectedMessageName`). Eso
-   es lo que una interfaz visual necesita y lo que una API no: nuestras
-   herramientas reciben siempre sus argumentos explícitos y no mantienen
-   selección, panel activo, índice de lista ni posición del cursor.
-   Lo que sí hay es el estado del entorno (la imagen es un mundo mutable: una
-   llamada afecta a la siguiente) y **una sola sesión con estado propio, la de
-   depuración**, porque un proceso detenido y su pila tienen que sobrevivir entre
-   llamadas. Se modela con handles explícitos, como hace el protocolo DAP
-   (sesión, `threadId`, `frameId`, `variablesReference`), no con estado implícito.
-   El estado de ventana de `Tools-*` no se copia: se delega en Cuis,
-   instanciando sus propias herramientas cuando el humano pide ver algo
-   (`display`).
-
-10. **Reusamos las reglas del entorno en vez de inventar las nuestras.** Para
-    los procesos, Cuis ya tiene la lista de cuáles no se tocan:
-    `ProcessBrowser class>>rulesFor: aProcess` responde `{se puede suspender, se
-    puede depurar}` y protege el proceso activo (la UI), el low-space watcher,
-    el proceso de finalización, el `backgroundProcess`, los vigilantes de
-    entrada y el timer de `Delay`. Las herramientas de procesos del agente
-    respetan esa misma regla. Igual que con los change sets para la auditoría:
-    antes de inventar mecanismo, miramos qué trae la imagen.
-11. **El servidor no toma recursos del host.** El puerto es un recurso del sistema
-    operativo: quien lo tomó lo tiene, y el que llega segundo falla. Por eso
-    `start` falla si el servidor ya está escuchando (`Already listening on port N`)
-    y falla distinto si el puerto es de otro, con el puerto en el mensaje. No hay
-    ningún `restart` que suelte el puerto a la fuerza, por dos razones: matar al
-    otro no es algo que un servidor serio haga, y menos un servidor MCP, que no
-    debe tomar recursos del host en nombre del cliente. Mover el servidor es una
-    decisión de quien es dueño de la imagen, y el precio de no hacerlo por él es
-    que el socket que escucha sin contestar deja de ser silencioso: ahora se nota
-    al arrancar.
-12. **El autor de los cambios es de quien autoriza.** El paquete no firma distinto
-    ni inventa un autor: lo que el agente escribe queda a nombre del dueño de la
-    imagen, porque el autor significa responsabilidad, y la responsabilidad es de
-    quien autoriza el cambio, escriba con la herramienta que escriba (es la misma
-    convención que git: el commit lleva el nombre del humano y la ayuda de una
-    herramienta se anota en el mensaje, no en el autor). Al arrancar, el servidor
-    **exige** que la imagen tenga autor.
-
-## Fases
-
-1. **Núcleo**: explorar, leer, editar, correr tests, `evaluate` y Transcript. Con
-   esto el agente trabaja como un programador.
-2. **Inspector y procesos.**
-3. **Debugger.** Está decidido y nos interesa, pero no por ahora: es lo más
-   delicado (maneja procesos y el estado de la pila) y su forma sigue a DAP, una
-   sesión con handles explícitos (proceso, frame, variables) en vez de estado
-   implícito.
-4. **Auditoría y reversión**, junto con la política de escrituras.
-
-## Problemas
-
-Acá se anotan los problemas que vamos encontrando, con la evidencia que los
-respalda. Los que ya tienen decisión la llevan anotada, pero **ninguna está
-implementada todavía**.
-
-### 1. Concurrencia: el trabajo del agente puede tomar la imagen entera — **resuelto** (13/09/2026)
-
-**Qué medimos** (servidor dentro de una imagen Cuis 7.8):
-
-| Caso | Resultado |
-| --- | --- |
-| Evaluación que **espera** (un `Delay` de 5 s) + otro pedido en paralelo | El otro respondió en 19 ms |
-| Evaluación que **calcula** (un bucle, 6 s) + otro pedido en paralelo | El otro tardó 5,01 s: esperó a que terminara la primera |
-| Prioridades medidas dentro de la imagen | handler del pedido: 60 · listener: 60 · UI: 50 · highIO: 70 · timing: 80 |
-| Un bucle ocupado de 6 segundos | 387.532.240 iteraciones (≈64 millones por segundo) |
-
-**Por qué pasa.** Cuis es un solo VM sobre un solo hilo del sistema operativo.
-Los procesos se turnan únicamente cuando *esperan* algo; uno que calcula no cede
-nunca, y no puede ser interrumpido por otro de prioridad igual o menor. Como
-todos los handlers de pedidos corren en prioridad 60 y la UI en 50, un pedido
-con cálculo pesado bloquea todo: los demás pedidos y la interfaz del humano. No
-es un servidor "mal hecho": es que no hay paralelismo real.
-
-**Decidido e implementado (13/09/2026):**
-
-1. Correr el trabajo del agente **por debajo de la UI**. La UI corre en
-   `Processor userInterruptPriority` (50) y el handler del `WebServer` en 60, así
-   que la ejecución de una herramienta se hace en un **proceso trabajador** propio,
-   con prioridad menor (`Processor userInterruptPriority - 10`), y el handler espera
-   su resultado con un semáforo. Doble ventaja: la interfaz del humano siempre gana el
-   CPU, y la cancelación ya tiene a quién cortar (se termina el trabajador, no el
-   handler). **Verificado**: una herramienta pregunta su propia prioridad y contesta 40,
-   con la UI en 50. Sólo ese trabajador: las prioridades de la imagen, y de cualquier
-   otro servidor que escuche en un puerto, no se tocan.
-
-**Descartado:** el **vigilante con timeout** como policía del servidor. Se
-descartó a propósito: el humano puede congelar la imagen igual que el agente, así
-que no se le pone al agente una regla que al humano no se le pone (ver la decisión
-filosófica en "La idea").
-
-**Decidido e implementado (13/09/2026): cancelación.** El servidor atiende
-`notifications/cancelled`: al recibir la cancelación de un pedido en curso termina el
-**trabajador** que lo está ejecutando —no el handler del `WebServer`, que quedaría con la
-conexión abierta y sin nadie aceptando— y **no responde** ese pedido. La respuesta vacía viaja
-por el mismo canal que ya existía para las notificaciones y termina en `202` sin cuerpo, como
-pide el transporte. El timeout queda del lado del cliente que pide, que es donde la spec de MCP
-lo pone.
-
-Las piezas, y por qué están donde están:
-
-- **Un registro de los pedidos en vuelo** (`MCPServerInFlightRequests`), del servidor y por lo
-tanto compartido por todas las conexiones: una cancelación llega en **otro** pedido, así que el
-alcance no puede ser la conexión. Cada llamada se registra bajo el id del pedido y el alta
-contesta un **handle** que la llamada devuelve al terminar: así una llamada borra su propia
-entrada y nunca la de otra que use el mismo id (los ids son únicos por conexión, no en el mundo).
-Es el único estado mutable compartido del paquete y su candado vive adentro; el alta pasa
-**antes** del `resume` del trabajador —si no, una llamada que termina rápido dejaría una entrada
-que nadie sacaría— y la baja con el handle es idempotente.
-- **Un id ambiguo no se cancela.** Si dos llamadas comparten id (dos clientes que eligieron el
-mismo), no se corta ninguna: cortar trabajo que nadie pidió cortar es peor que no cortar. Con
-sesiones MCP (`Mcp-Session-Id`) el alcance se vuelve exacto; hasta entonces, esa es la regla.
-- **La interrupción es `terminate`**, la del propio Cuis: termina el proceso y corre sus
-`ensure:` antes de volver (verificado en la imagen). Cancelar no es rebobinar: lo que ya se
-compiló, quedó compilado.
-- **Un servidor que ya estaba vivo** cuando apareció el registro no tiene ninguno, y una
-cancelación se le **ignora** (contesta `202`): no registró llamadas propias, así que no hay nada
-suyo que cortar. Para que las registre hay que rearmarlo, que es decisión del dueño de la imagen.
-
-**De los tres bordes del adaptador**, el `202` ya está (verificado con un POST real contra el
-servidor): queda el `405` en el GET y la validación de `Origin`.
-
-**Lo que no se puede salvar.** Si la evaluación bloquea el VM entero (por
-ejemplo una lectura de stdin bloqueante, que ya medimos), ni el vigilante la
-desengancha. La única salida es matar el VM desde afuera, y se pierde el estado
-no guardado (el código evaluado sí queda en el archivo de cambios).
-
-### 2. Codificación de caracteres — **resuelto** (13/09/2026)
-
-El cuerpo de los pedidos se leía como bytes, sin decodificar UTF-8: un `café` con los bytes
-`63 61 66 c3 a9` llegaba al tool como **cinco** caracteres en vez de cuatro. En MCP esto no era
-opcional: la spec dice que los mensajes JSON-RPC **deben** estar en UTF-8, así que era un
-incumplimiento, no una mejora.
-
-**El arreglo, y por qué ahí.** La capa HTTP de Cuis es de bytes en los dos sentidos: el `content`
-que llega es un string con un carácter por byte, y al responder se escribe un byte por carácter
-(por eso la respuesta "se veía bien" por accidente: los dos caracteres basura de la mala lectura
-eran, justamente, los dos bytes UTF-8). Así que la traducción va en el adaptador, en `MCPServer`:
-`textFromWire:` lee los bytes como UTF-8 al entrar y `wireStringFor:` escribe el texto como UTF-8
-al salir, con `String fromUtf8Bytes:` y `asUtf8Bytes` (las mismas piezas que usa el `WebClient` de
-Cuis). Adentro, todo es texto: el protocolo no sabe de bytes.
-
-**Verificado en vivo**: el mismo pedido que antes devolvía cinco caracteres ahora devuelve cuatro,
-y en el cable el acento sale como los bytes `c3 a9`.
-
-**Y los archivos ya estaban bien**: el file out escribe UTF-8 porque el VM se lanza con
-`-encoding UTF-8` (así lo hace el launcher de Cuis). No se tocó nada, y quedó un test que lo fija
-como guarda, para que se note si alguna vez se lanza distinto.
-
-### 3. Condiciones de carrera entre el humano y el agente (una decidida, otra pendiente)
-
-El humano edita en el Browser mientras el agente compila por HTTP. Verificado en
-la imagen: **Cuis no protege de esto**. `CodeProvider>>okayToAccept`, el último
-control antes de aceptar un método, sólo chequea que no estés viendo bytecodes o
-diffs: **no compara si el método cambió abajo**. Si el agente compila `Foo>>bar`
-mientras el humano lo tiene en el panel de edición, y el humano acepta después, la
-versión del humano gana en silencio y el cambio del agente se pierde. Y al revés:
-el panel del humano queda con texto viejo sin que nadie avise.
-
-Son conflictos distintos y no se resuelven igual:
-
-- **Mismo método**: humano con el texto abierto y agente compilando → concurrencia
-  optimista.
-- **Estructura**: borrar o renombrar una clase que el humano tiene abierta, o
-  recompilar una clase mientras hay un frame apuntando a ella → regla de
-  procesos (decisión 10).
-- **Recursos del sistema** (compilador, `SystemOrganizer`, `ChangeSet`,
-  `Preferences`): no hay merge posible → política de blancos.
-
-Opciones y estado de cada una:
-
-- **Concurrencia optimista (compare-and-set)**: leer devuelve un token de versión;
-  escribir lo exige de vuelta; si no coincide, error de conflicto con la fuente
-  actual, para que el agente relea y reintente. **Descartada deliberadamente
-  (13/09/2026)**: en un contexto real hace falta, pero complica la interfaz del agente
-  (token de ida y vuelta, conflicto, reintento) y el alcance del proyecto es una demo
-  creativa, no un producto en producción. Queda anotada como problema conocido e
-  ignorado a propósito, no por descuido.
-- **Visibilidad, atribución y revert** (el change set del agente, anuncios en el
-  Transcript, marca en el `stamp`): **fuera de alcance** por la misma razón. El revert a
-  mano ya existe igual: la imagen trae `ChangeSet` y `VersionsBrowser`.
-- **Serializar las escrituras del agente** con un mutex, para que dos clientes MCP
-  no se entrelacen: **fuera de alcance** (en la demo hay un solo cliente).
-- **Checkpoints** con `saveAs:` a un archivo aparte: **fuera de alcance** (es caro y la
-  demo no lo necesita).
-- **Descartado**: bloquear al humano o parchear su camino de edición, que sería
-  ponerle al humano una regla que al agente no.
-
-Lo de los procesos no va acá: es de las herramientas de procesos y del debugger
-(ver la decisión 10 y la fase 3).
-
-### 4. Acciones de UI desde el proceso del pedido (sin decidir)
-
-Abrir ventanas desde el handler funciona, pero el handler corre en prioridad 60,
-no en el proceso de la UI. El patrón correcto en Cuis es marshallar esas
-acciones al proceso de la UI (`UISupervisor whenUIinSafeState:`). Hoy funciona;
-es el tipo de cosa que rompe de forma sutil.
-
-### 5. Anomalía sin explicar: un proceso de fondo dejó de correr al principal
-
-En pruebas propias, un `fork` de un bucle `whileTrue` con un `Delay` adentro
-dejaba al proceso principal sin ejecutarse nunca más, aunque los dos tenían la
-misma prioridad (40). No está explicado. Es el mismo mecanismo en el que se
-apoya el servidor, así que conviene entenderlo antes de construir encima.
-
-### 6. Crecimiento (sin decidir)
-
-Cada pedido crea un proceso, y cada cambio que hace el agente engorda los change
-sets de la imagen. Falta decidir si el paquete ofrece "descartar los cambios del
-agente" y qué pasa con el guardado.
-
-### 7. El manejador del servidor queda viejo al guardar y reabrir la imagen
-
-Un servidor MCP no sobrevive a un guardado: la imagen se acuerda del *objeto* (lo que
-haya en un global, como `Smalltalk at: #MCPDemo put: server`), pero no del socket ni
-del proceso que escucha. Después de reabrir, ese global apunta a un servidor **muerto
-que igual parece vivo**: contesta su `port`, su `catalogue` y hasta su lista de
-herramientas, porque son datos del objeto, no del socket.
-
-Nos pasó el 13/09 y costó un rato entenderlo: el servidor de demo parecía contestar
-cosas viejas porque el global apuntaba a un objeto que no era el que estaba escuchando
-(encima, el bug de las variables compartidas lo disimulaba).
-
-Opciones (sin decidir):
-
-- **Limpiar los globals al arrancar**: al iniciar la imagen, buscar los globals que
-  sean servidores y ponerlos en nil. Barato y evita la confusión, pero hay que
-  engancharse al arranque de Cuis.
-- **No usar un global**: dejar el servidor en una variable del Workspace, o dentro de un
-  objeto que se cree de nuevo al arrancar. Menos magia, menos alcance.
-- **Que el servidor sepa que está muerto**: que `start` sea idempotente y que preguntarle
-  el estado a un servidor guardado diga que ya no escucha (hoy no hay forma de
-  distinguirlo mirando el objeto).
-
-### Y el socket que escucha sin nadie aceptando
-
-Hay un estado peor que el global viejo: un socket en LISTEN que **no contesta**, porque el
-proceso que aceptaba ya no está. Se reconoce desde afuera por lo que *no* pasa: el cliente no
-recibe `connection refused`, se queda esperando. Se reprodujo con dos recetas:
-
-- parar el listener dejando el socket abierto (`webServer stopListener`);
-- **destruir el servidor desde un pedido que él mismo está atendiendo** (es lo que pasó el
-  13/09 y lo que más cuesta entender: `destroy` mata las conexiones en curso, incluida la del
-  pedido, y el socket queda escuchando solo).
-
-Al revés de lo que parece, **no** lo produce que la imagen se muera (el sistema operativo
-cierra sus sockets y el puerto queda libre).
-
-Consecuencia: **no autodestruirse desde un pedido**, y si pasa, `start` lo dice (falla,
-porque el puerto está tomado) y soltarlo es una decisión desde la imagen, mirando qué
-`WebServer` está escuchando ahí. El servidor no toma puertos de nadie, ni siquiera suyos.
-
-### 8. Las operaciones interactivas: revisión y transacción
-
-Las ventanas tienen operaciones que **no son un solo paso**: proponer un cambio, mostrarlo,
-esperar el visto bueno del humano y recién ahí aplicarlo. El primer caso concreto es el
-**renombre de un método** (un selector), y no es casualidad que sea el único que no pudimos
-convertir en herramienta.
-
-**El hallazgo.** Renombrar una *clase* sí se puede sin interfaz (`Smalltalk renameClassNamed:as:`).
-Renombrar un *selector* no: la implementación vive en `Browser>>renameSelector` y en el editor, y
-pasa por `RefactoringApplier` con el texto del editor. El objeto `RenameSelector` es sólo una mezcla
-de ayuda. Y hacerlo a mano significa reescribir las fuentes de todos los remitentes, que con
-selectores de varios keywords, envíos anidados y literales con texto adentro se rompe en silencio.
-
-**Problema A: la revisión necesita estado.** El flujo del Browser es proponer, mostrar el diff,
-esperar la aprobación y aplicar todo junto. Ese *esperando aprobación* es estado, y vive en la
-ventana. Nuestro servidor es sin estado (a propósito: es lo que deja compartir el catálogo sin
-locks), así que no puede sostener ese flujo entre pedidos. Es la misma familia que el debugger, y
-por eso los dos van a necesitar lo mismo: una **sesión con estado**, que ya está decidida y
-diferida.
-
-**Problema B: no hay transacción.** En la imagen no hay "todo o nada". Si el renombre se hiciera en
-un pedido y uno de los remitentes no compila, quedaría a medias: algunos actualizados y el viejo ya
-borrado. El `ChangeSet` registra todo, así que se puede volver a mano con el VersionsBrowser, pero
-el servidor no puede prometer unidad. Mitigación propuesta, y creemos que es la única versión que
-vale la pena: **validar antes de tocar**, calculando y compilando en el aire la fuente nueva de cada
-remitente con el parser de Cuis; si alguna falla, se aborta sin haber cambiado nada. Después aplicar
-es determinista.
-
-**Decisión (13/09/2026): no se implementa por ahora.** El renombre con remitentes queda del lado
-del Browser, con el humano viendo el diff, que es donde Cuis lo hace bien. Sin remitentes, la receta
-con las herramientas que ya existen alcanza: compilar el método nuevo con el mismo cuerpo y remover
-el viejo, y `all_calls_on` dice si tiene remitentes antes de empezar. Cuando llegue la sesión con
-estado, este problema y el del debugger se resuelven juntos.
-
-## Precedentes
-
-Quién ya enfrentó lo mismo: exponer un entorno vivo a un agente, con
-modificación en caliente y concurrencia.
-
-| Proyecto | Qué es | Qué nos enseña |
-| --- | --- | --- |
-| `KentBeck/SmalltalkGenie` (Pharo) | 26 herramientas sobre una imagen viva, por loopback | Sus nombres de herramienta son los del **System Browser**: `list_classes`, `list_methods`, `get_class_source`, `get_method_source`, `search_classes_like`, `search_implementors`, `search_references`, más `eval`, `define_class`, `define_method`, `run_test`. Y concluyen explícitamente que **las herramientas no son un sandbox**: "the 'go only through the tools' rule is guidance to a cooperating agent, not a sandbox. So the real job is containing *who can reach the server*" (loopback, chequeo de `Origin`, token opcional, gating de herramientas peligrosas). Detalle: es *headless*, sin Morphic — justo la dimensión que nosotros queremos conservar. |
-| `CorporateSmalltalkConsultingLtd/ClaudeSmalltalk` (Squeak) | 14 herramientas por TCP | Otra superficie tipo Browser: evaluar, navegar jerarquías, leer y escribir métodos, y **guardar la imagen**. |
-| `mumez/smalltalk-interop-mcp-server` (Pharo/Squeak) | Servidor MCP afuera + un servidor dentro de la imagen (SIS) | El puente por socket hacia la imagen, con parámetros como la profundidad del stack trace de los errores. |
-| `quasi/cl-mcp-server` (Common Lisp, 37 herramientas) | REPL persistente | `evaluate-lisp`, **`compile-form`** (compilar sin ejecutar), `validate-syntax`, `describe-symbol`, `apropos-search`, `who-calls`, y **`configure-limits`** (timeout de evaluación y límite de salida configurables). |
-| `ctford/mcp-nrepl` y `JohanCodinha/nrepl-mcp-server` (Clojure) | Acceso a un nREPL vivo | Misma postura que la nuestra: "grants full REPL access… the same level of access you have when typing at a REPL prompt". Y un dato de diseño: "the nREPL session shares state — one evaluation affects subsequent ones". |
-| `bettyguo/mcp-jupyter` | Kernel de Jupyter vivo | Devuelve **resúmenes** por defecto (`df.head(5)`), no datos crudos, con herramientas de opt-in; y un modo que levanta el kernel sin Jupyter (la variante aislada). |
-| `ChromeDevTools/chrome-devtools-mcp` (51k★, oficial de Chrome) | Navegador vivo | El precedente más grande de entorno vivo expuesto a un agente: inspeccionar, depurar y **modificar cualquier dato** del navegador. Tiene flags de aislamiento (`--isolated`, `--headless`). |
-
-Además, dos cláusulas de la spec de MCP (2025-06-18) que nos ordenan el diseño:
-
-- **Cancelación** (`notifications/cancelled`, con el id del pedido): el receptor
-  *debería* dejar de procesar, liberar recursos y **no responder**. Cualquiera de
-  los dos lados puede cancelar. El servidor *puede* ignorarla si el pedido no se
-  puede cancelar.
-- **Timeouts**: los establece **quien manda el pedido**, y ante un timeout
-  *debería* emitir una cancelación. Es decir: el timeout es responsabilidad del
-  cliente, no un policía del servidor. Encaja con haber descartado el vigilante
-  propio.
-
-Fuera del mundo MCP, dos prácticas conocidas que apuntan a lo mismo (conocimiento
-general, no verificado en esta sesión): Erlang/OTP permite que dos versiones de un
-módulo convivan y hace el cambio de código **explícito y coordinado**, con la
-migración de estado como la parte difícil; y en Clojure recargar código requiere
-seguir el grafo de dependencias (tools.namespace), porque el enemigo es el estado
-viejo que queda vivo. Lección para nosotros: separar el cambio de código del
-cambio de estado, y que el cambio sea explícito.
-
-## Decisiones pendientes
-
-- **Superficie de herramientas**: ¿`evaluate` solo (con él se puede todo, igual
-  que un programador), o un conjunto al estilo del System Browser —listar
-  clases, listar métodos, leer código, buscar implementadores y referencias,
-  compilar un método, correr tests— *además* de `evaluate`? Los precedentes de
-  Smalltalk van por la segunda opción, con `eval` siempre presente.
-- **Política para las escrituras**: libres, con confirmación desde la imagen, o
-  permitidas solo en clases marcadas como seguras. (El compare-and-set que las
-  protegía quedó descartado por alcance: ver Problemas 3.)
-- **Superficie de herramientas**: en elaboración (ver el inventario de
-  herramientas del programador). `evaluate` queda expuesto, pero la interfaz
-  expresa que lo esperable es interactuar a través de las herramientas
-  específicas, y que `evaluate` es una particularidad.
-- **Renombre de métodos (con remitentes)**: diferido. Pide el flujo de revisión
-  (una sesión con estado) y una noción de transacción: ver el Problema 8.
+## Documentation
+
+- [docs/architecture.md](docs/architecture.md): components, request handling, concurrency, cancellation, testing, and how the implementation differs from the initial design.
+- [docs/decisions.md](docs/decisions.md): technical decisions with their trade-offs and rejected alternatives, deferred scope, and prior art.
+- [docs/findings.md](docs/findings.md): problems found during the experiment, with evidence, causes and resolutions, and the issues that remain open.
+- [docs/development-log.md](docs/development-log.md): how the package was developed, and its test-driven milestones.
+- [demo/README.md](demo/README.md): the manual test panel and the cancellation demo.

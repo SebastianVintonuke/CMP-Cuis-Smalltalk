@@ -330,36 +330,6 @@ wireStringFor: aString
 	^ stream contents
 ! !
 
-!MCPServer methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 21:23:32'!
-test09DecodesTheBodyAsUtf8
-	"The body arrives as bytes, and JSON is UTF-8 by definition: a character that takes two
-	bytes on the wire has to reach the tool as one character, not two. The accent is built from
-	its code point, because this source travels through the same boundary."
-	| accent code body wire response result |
-	accent := String with: (Character codePoint: 233).
-	code := '| s | s := ''caf', accent, '''. s size'.
-	body := '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"print_it","arguments":{"code":"',
-		code, '"}}}'.
-	wire := WriteStream on: String new.
-	body asUtf8Bytes do: [ :byte | wire nextPut: (Character codePoint: byte) ].
-	response := (MCPServer on: 8767 tools: { MCPServerWorkspaceTools })
-		handleRequestBody: wire contents.
-	result := Json readFrom: response readStream.
-	self assert: ((((result at: 'result') at: 'content') first) at: 'text') equals: '4'
-! !
-
-!MCPServer methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 21:23:32'!
-test10EncodesTheResponseAsUtf8
-	"The response leaves as UTF-8 bytes: the client can decode it and get the character back,
-	instead of receiving the raw code point as a byte."
-	| accent body response decoded |
-	accent := String with: (Character codePoint: 233).
-	body := '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"print_it","arguments":{"code":"String with: (Character codePoint: 233)"}}}'.
-	response := (MCPServer on: 8767 tools: { MCPServerWorkspaceTools }) handleRequestBody: body.
-	decoded := String fromUtf8Bytes: response asByteArray.
-	self assert: (decoded findString: accent) > 0
-! !
-
 !MCPServer class methodsFor: 'instance creation' stamp: 'S.V. 13/Sep/2026 23:41:31'!
 on: aPort tools: aCollectionOfClasses
 	"Answer a server that exposes the tools declared by those classes on that port."

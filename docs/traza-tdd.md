@@ -352,14 +352,24 @@ vive en `Browser>>renameSelector` y en el editor, y pasa por `RefactoringApplier
 editor. El objeto `RenameSelector` es sólo una mezcla de ayuda.
 
 Hacerlo a mano significa reescribir las fuentes de todos los remitentes, y eso, con selectores de
-varios keywords, envíos anidados y literales con texto adentro, es exactamente el tipo de
-media-medida que se rompe en silencio. Es el mismo criterio con el que descartamos el `restart` de
-puertos: no hacemos una versión manual de algo que la ventana hace bien.
+varios keywords, envíos anidados y literales con texto adentro, se rompe en silencio.
 
-Queda la receta segura, con lo que ya hay: si el selector **no tiene remitentes**, renombrarlo son
-dos herramientas que existen (compilar el método nuevo con el mismo cuerpo y remover el viejo, y
-`all_calls_on` dice si tiene remitentes). Si los tiene, el renombre se hace en el Browser, con el
-humano, que es donde Cuis lo puede hacer sin romper nada.
+**Y son dos problemas, no uno** (quedaron como Problema 8 del README):
+
+1. **La revisión necesita estado.** El flujo del Browser es proponer, mostrar el diff, esperar la
+   aprobación y aplicar todo junto; ese "esperando aprobación" vive en la ventana. Nuestro servidor
+   es sin estado a propósito, así que no puede sostener ese flujo entre pedidos. Es la misma
+   familia que el debugger: los dos necesitan una sesión con estado, ya decidida y diferida.
+2. **No hay transacción.** En la imagen no hay "todo o nada": si un remitente no compila, el
+   cambio queda a medias. La mitigación propuesta es validar antes de tocar, calculando y
+   compilando en el aire la fuente nueva de cada remitente con el parser de Cuis; si algo falla, se
+   aborta sin haber cambiado nada.
+
+**Decisión: no se implementa por ahora.** El renombre con remitentes queda en el Browser, con el
+humano viendo el diff, que es donde Cuis lo hace bien. Sin remitentes, la receta con lo que ya
+existe alcanza: compilar el método nuevo con el mismo cuerpo y remover el viejo, y `all_calls_on`
+dice si tiene remitentes antes de empezar. Cuando llegue la sesión con estado, este problema y el
+del debugger se resuelven juntos.
 
 ### Los tests se escriben en archivos
 

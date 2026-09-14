@@ -363,6 +363,40 @@ Consecuencia: **no autodestruirse desde un pedido**, y si pasa, `start` lo dice 
 porque el puerto está tomado) y soltarlo es una decisión desde la imagen, mirando qué
 `WebServer` está escuchando ahí. El servidor no toma puertos de nadie, ni siquiera suyos.
 
+### 8. Las operaciones interactivas: revisión y transacción
+
+Las ventanas tienen operaciones que **no son un solo paso**: proponer un cambio, mostrarlo,
+esperar el visto bueno del humano y recién ahí aplicarlo. El primer caso concreto es el
+**renombre de un método** (un selector), y no es casualidad que sea el único que no pudimos
+convertir en herramienta.
+
+**El hallazgo.** Renombrar una *clase* sí se puede sin interfaz (`Smalltalk renameClassNamed:as:`).
+Renombrar un *selector* no: la implementación vive en `Browser>>renameSelector` y en el editor, y
+pasa por `RefactoringApplier` con el texto del editor. El objeto `RenameSelector` es sólo una mezcla
+de ayuda. Y hacerlo a mano significa reescribir las fuentes de todos los remitentes, que con
+selectores de varios keywords, envíos anidados y literales con texto adentro se rompe en silencio.
+
+**Problema A: la revisión necesita estado.** El flujo del Browser es proponer, mostrar el diff,
+esperar la aprobación y aplicar todo junto. Ese *esperando aprobación* es estado, y vive en la
+ventana. Nuestro servidor es sin estado (a propósito: es lo que deja compartir el catálogo sin
+locks), así que no puede sostener ese flujo entre pedidos. Es la misma familia que el debugger, y
+por eso los dos van a necesitar lo mismo: una **sesión con estado**, que ya está decidida y
+diferida.
+
+**Problema B: no hay transacción.** En la imagen no hay "todo o nada". Si el renombre se hiciera en
+un pedido y uno de los remitentes no compila, quedaría a medias: algunos actualizados y el viejo ya
+borrado. El `ChangeSet` registra todo, así que se puede volver a mano con el VersionsBrowser, pero
+el servidor no puede prometer unidad. Mitigación propuesta, y creemos que es la única versión que
+vale la pena: **validar antes de tocar**, calculando y compilando en el aire la fuente nueva de cada
+remitente con el parser de Cuis; si alguna falla, se aborta sin haber cambiado nada. Después aplicar
+es determinista.
+
+**Decisión (13/09/2026): no se implementa por ahora.** El renombre con remitentes queda del lado
+del Browser, con el humano viendo el diff, que es donde Cuis lo hace bien. Sin remitentes, la receta
+con las herramientas que ya existen alcanza: compilar el método nuevo con el mismo cuerpo y remover
+el viejo, y `all_calls_on` dice si tiene remitentes antes de empezar. Cuando llegue la sesión con
+estado, este problema y el del debugger se resuelven juntos.
+
 ## Precedentes
 
 Quién ya enfrentó lo mismo: exponer un entorno vivo a un agente, con
@@ -411,3 +445,5 @@ cambio de estado, y que el cambio sea explícito.
   herramientas del programador). `evaluate` queda expuesto, pero la interfaz
   expresa que lo esperable es interactuar a través de las herramientas
   específicas, y que `evaluate` es una particularidad.
+- **Renombre de métodos (con remitentes)**: diferido. Pide el flujo de revisión
+  (una sesión con estado) y una noción de transacción: ver el Problema 8.

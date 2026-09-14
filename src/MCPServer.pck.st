@@ -767,17 +767,13 @@ inputSchemaFor: aDescriptor
 	schema at: 'required' put: aDescriptor argumentNames asArray.
 	^ schema! !
 
-!MCPServerProtocol methodsFor: 'answers' stamp: 'S.V. 13/Sep/2026 22:18:56'!
+!MCPServerProtocol methodsFor: 'answers' stamp: 'S.V. 13/Sep/2026 22:20:40'!
 instructions
 	"Answer what the handshake tells the client about the philosophy of the environment: a live,
 	shared system where absolute freedom demands deliberate care. It avoids naming specific UI
 	windows or imposing artificial limits, relying instead on the agent's sense of responsibility
 	for the environment's stability and the owner's signature."
-	^ 'This server connects you to a living Smalltalk environment. You are not editing static files in isolation; you are collaborating inside a running system alongside a human. Every change you make is immediately alive and present in their world.
-
-The system hides nothing from you. You possess the absolute freedom to redefine its very fabric on the fly. However, this profound malleability means that a careless action can shatter the environment.
-
-Keep in mind that every modification carries the human''s signature. They are staking their name on your work, so act with thoughtful judgment.'
+	^ 'This server connects you to a living Smalltalk environment. You are not editing static files in isolation; you are collaborating inside a running system alongside a human. Every change you make is immediately alive and present in their world. The system hides nothing from you. You possess the absolute freedom to redefine its very fabric on the fly. However, this profound malleability means that a careless action can shatter the environment. Keep in mind that every modification carries the human''s signature. They are staking their name on your work, so act with thoughtful judgment.'
 ! !
 
 !MCPServerProtocol methodsFor: 'answers' stamp: 'S.V. 13/Sep/2026 12:32:32'!

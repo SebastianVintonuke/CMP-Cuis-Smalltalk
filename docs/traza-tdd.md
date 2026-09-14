@@ -443,6 +443,43 @@ de la cancelación que falta.
 - Y la de siempre, otra vez: **un test con un número adentro envejece**. El del Test Runner esperaba
   "2 tests" de `MCPServerToolTest` y ahora son tres, así que el número pasó a salir de la clase.
 
+## La cancelación (ciclos 38 a 42)
+
+La otra mitad del problema 1: el trabajador ya tenía prioridad baja, y ahora tiene a quién cortar.
+
+| # | Test | Rojo | Verde | Qué se implementó |
+| --- | --- | --- | --- | --- |
+| 38 | el registro de los pedidos en vuelo (7 tests) | `MCPServerInFlightRequests>>isEmpty` no existía | 7/7 | `MCPServerInFlightRequests`: alta bajo el id con **handle**, baja por handle, `cancel:` con la regla del id ambiguo, todo bajo su candado |
+| 39 | el alta pasa antes del `resume`, y la baja es de la llamada (3 tests) | `MCPServerTool>>executeWith:under:in:` no existía | 6/6 | la costura en `MCPServerTool`: registro antes de arrancar el trabajador, y baja con el handle en el `ensure:` |
+| 40 | la notificación de cancelación (4 tests) | `MCPServerProtocol class>>on:inFlight:` no existía | 12/12 | la rama en `handleMessage:`, `cancelRequestedBy:`, el motivo al Transcript, y el servidor con su propio registro |
+| 41 | el `202` de lo que no tiene respuesta | no hubo rojo: la guarda se escribió después | 61/61 | `handleRequest:` contesta `202` sin cuerpo; un pedido cancelado no manda respuesta |
+| 42 | cancelar por HTTP, con dos clientes | no hubo rojo: es el e2e que cierra el ciclo | 69/69 | el pedido colgado, la notificación en otro pedido, el `202`, el registro vacío y el servidor que sigue andando |
+
+Los dos últimos se escribieron después de la implementación, y quedan anotados así: el `202` y el
+e2e son guardas de lo que ya estaba, no ciclos rojo-verde.
+
+### Lo que se aprendió, y casi todo fue del instrumento
+
+- **Medir con un instrumento sin probarlo es medir cualquier cosa.** Mi primer experimento dijo que
+  el `ensure:` no despertaba al que esperaba. Era falso: en esta imagen
+  `Semaphore>>waitTimeoutMSecs:` contesta **al revés** de lo que yo suponía (con una señal pendiente
+  da `false`; vencido, `true`). Lo descubrí probando el instrumento solo. Si una medición
+  contradice a la fuente, primero dudá de la medición.
+- **`(Semaphore new) critical:` no entra: espera.** Un semáforo nuevo no tiene señales, así que el
+  bloque nunca corre y el pedido queda colgado (dos trabajadores míos quedaron así). El idioma es
+  `Semaphore forMutualExclusion`, que nace con una. Casi le echo la culpa a `Transcript`, que no
+  tenía nada que ver: `Transcript show:` desde un trabajador vuelve sin bloquear.
+- **Lo que la imagen contesta sobre los procesos**: `isSuspended` (un proceso recién creado sí,
+  después del `resume` no), `isTerminated`, y `terminate` corriendo los `ensure:` **antes** de
+  volver. Eso último es lo que sostiene todo el diseño, y está medido: el archivo que escribe el
+  `ensure:` ya estaba en disco cuando el `terminate` retornó.
+- **Un proceso terminado antes de correr no ejecuta su `ensure:`**: el desenrollado arranca de la
+  pila que tiene, y si el `ensure:` todavía no se envió, no hay nada que desenrollar. Consecuencia
+  de diseño: `cancel:` saca la entrada del registro él mismo, en vez de dejar esa tarea al
+  trabajador. Salió de razonar el caso, y quedó fijado por el test 07.
+- **`pkill -f <patrón>` mató mi propia shell**, porque el patrón coincidía con mi línea de comando.
+  Si hay que matar por patrón, se lo encierra: `[m]cp-correr`.
+
 ## File out
 
 Quedaron `src/MCPServer.pck.st` (10 clases de producción) y
@@ -455,13 +492,16 @@ regenerar), y `MCPServerTest` (la clase) tuvo que moverse a la categoría
 
 ## Lo que falta
 
-1. **Cancelación** (`notifications/cancelled`): decidida, sin implementar.
+1. **Cancelación** (`notifications/cancelled`): **implementada** (ciclos 38 a 42). De este tema
+   quedan las **sesiones MCP** (`Mcp-Session-Id`), que vuelven exacto el alcance del registro de
+   pedidos en vuelo, y dos de los tres bordes del adaptador: el `405` en el GET y la validación de
+   `Origin` (el `202` ya está).
 2. **Guarda de versión (compare-and-set) en las herramientas que escriben**:
    **descartada a propósito** por alcance (13/09/2026, decisión de Sebastian). Las dos
    que escriben (`compile_method_in_class_classified` y `remove_method_in_class`) usan
    el mismo camino que las demás: sin token, sin conflicto y sin reintento. En un
    contexto real haría falta; acá complica la interfaz y no aporta a la demo.
-3. **Proceso trabajador de prioridad baja**: decidido, sin implementar.
+3. **Proceso trabajador de prioridad baja**: **implementado** (ciclo 37).
 4. **Sesiones MCP**: hoy el servidor es sin estado, no recuerda el `protocolVersion`
    negociado (alcanza para el Inspector; no para sesiones con estado).
 5. **`annotations`** (hints) y la **lista dinámica de herramientas**: anotados para después.

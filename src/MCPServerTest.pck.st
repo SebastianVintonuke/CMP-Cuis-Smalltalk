@@ -853,7 +853,7 @@ test10EncodesTheResponseAsUtf8
 	self assert: (decoded findString: accent) > 0
 ! !
 
-!MCPServerTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 23:42:12'!
+!MCPServerTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 23:44:41'!
 test11ANotificationIsAnsweredWith202AndNoBody
 	"The transport is explicit: a notification is accepted with 202 and no body, and that is also
 	what a request that was cancelled gets, because there is nothing to answer. The check is a real
@@ -869,7 +869,7 @@ test11ANotificationIsAnsweredWith202AndNoBody
 		ensure: [ server destroy ]
 ! !
 
-!MCPServerTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 23:42:12'!
+!MCPServerTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 23:44:41'!
 test12ACancellationStopsARequestOverHttp
 	"A request that is running is stopped by the client that issued it: the request gets no answer,
 	the call disappears from the server, and the server keeps taking requests afterwards. The test
@@ -902,6 +902,18 @@ test12ACancellationStopsARequestOverHttp
 		  type: 'application/json'.
 	  self assert: (response content findString: '4') > 0 ]
 		ensure: [ call ifNotNil: [ call terminate ]. server destroy ]
+! !
+
+!MCPServerTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 23:44:41'!
+test13AServerBornBeforeTheRegistryIgnoresACancellation
+	"A server that was already alive when the registry appeared has no registry to look into, and
+	it never registered a call: the protocol says a cancellation that cannot be acted on is ignored,
+	so the notification goes nowhere quietly, instead of answering an error to the client."
+	| server |
+	server := MCPServer on: 8767 tools: { MCPServerWorkspaceTools }.
+	server instVarNamed: 'inFlight' put: nil.
+	self assert: (server handleRequestBody: '{"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":7,"reason":"x"}}') isNil.
+	self assert: server inFlight isNil
 ! !
 
 !MCPServerTestingToolsTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 22:35:59'!

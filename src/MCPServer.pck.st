@@ -265,9 +265,11 @@ handleRequestBody: aString
 	^ self wireStringFor: (Json render: response)
 ! !
 
-!MCPServer methodsFor: 'handling' stamp: 'S.V. 13/Sep/2026 23:41:31'!
+!MCPServer methodsFor: 'handling' stamp: 'S.V. 13/Sep/2026 23:44:41'!
 inFlight
-	"Answer the registry of the calls running in this server: what a cancellation looks into."
+	"Answer the registry of the calls running in this server: what a cancellation looks into. A
+	server that was already alive when the registry appeared answers nil here, and that is honest:
+	it never registered a call, so there is nothing of its own to stop."
 	^ inFlight
 ! !
 
@@ -771,15 +773,18 @@ isQuote: aCharacter ^ aCharacter = $"! !
 !MCPServerProtocol methodsFor: 'accessing' stamp: 'S.V. 13/Sep/2026 12:32:32'!
 catalogue ^catalogue! !
 
-!MCPServerProtocol methodsFor: 'handling' stamp: 'S.V. 13/Sep/2026 23:41:31'!
+!MCPServerProtocol methodsFor: 'handling' stamp: 'S.V. 13/Sep/2026 23:44:41'!
 cancelRequestedBy: aMessage
 	"The client asks that a request it issued be stopped. It is a notification, so it never gets an
 	answer, and a malformed one is ignored: that is what keeps notifications fire and forget. The
-	reason is written to the transcript, for whoever is reading the image."
+	same goes for a server that has no registry to look into, which is the case of a server that was
+	already alive when the registry appeared: the protocol says a cancellation that cannot be acted
+	on is ignored. The reason is written to the transcript, for whoever is reading the image."
 	| params requestId reason |
 	params := aMessage at: 'params' ifAbsent: [ Dictionary new ].
 	requestId := params at: 'requestId' ifAbsent: [ nil ].
 	reason := params at: 'reason' ifAbsent: [ '' ].
+	inFlight isNil ifTrue: [ ^ nil ].
 	(inFlight cancel: requestId)
 		ifTrue: [ self noteCancelledRequest: requestId reason: reason ].
 	^ nil

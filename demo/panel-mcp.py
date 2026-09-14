@@ -55,8 +55,10 @@ PAGE = """<!doctype html>
         background: #8881; border-radius: 5px; font-size: 13px; max-height: 320px; overflow: auto; }
   .ok { border-left: 3px solid #2e7d32; }
   .err { border-left: 3px solid #c62828; }
-  .note { border-left: 3px solid #8886; padding: 2px 0 2px 12px; margin-bottom: 18px; opacity: .85; }
-  .note-label { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; opacity: .6; margin-bottom: 4px; }
+  .server { border-left: 3px solid #8886; padding: 2px 0 2px 12px; margin-bottom: 18px; }
+  .field { margin-bottom: 6px; font-size: 13px; }
+  .field-name { font-family: ui-monospace, monospace; font-size: 12px; opacity: .65; }
+  .field-value { display: block; white-space: pre-wrap; word-break: break-word; opacity: .9; margin-top: 2px; }
   .bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
   .bar label.inline { margin: 0; display: flex; gap: 6px; align-items: center; font-size: 13px; opacity: .8; }
   .bar label.inline input { width: auto; }
@@ -179,23 +181,39 @@ load();
 """
 
 
-def instructions():
-    """The message the server gives a client when it connects, or empty if it cannot be read."""
+def server_result():
+    """The result of the handshake: what the server says about itself when a client connects."""
     try:
         response = rpc("initialize", {"protocolVersion": "2025-06-18", "capabilities": {},
                                       "clientInfo": {"name": "panel", "version": "1"}})
-        return ((response or {}).get("result") or {}).get("instructions", "")
+        return (response or {}).get("result") or {}
     except Exception:  # noqa: BLE001 - the panel still serves without it
+        return {}
+
+
+def server_block():
+    """The handshake as the page shows it: every field it brings, with its own name, and the
+    instructions last, as prose. It is generic on purpose: whatever the server adds later shows
+    up here without touching this code."""
+    result = server_result()
+    if not result:
         return ""
+    parts = []
+    for key in sorted(k for k in result if k != "instructions"):
+        value = result[key]
+        if not isinstance(value, str):
+            value = json.dumps(value, ensure_ascii=False, sort_keys=True)
+        parts.append('<div class="field"><span class="field-name">' + html.escape(key) +
+                     '</span><span class="field-value">' + html.escape(value) + '</span></div>')
+    if result.get("instructions"):
+        parts.append('<div class="field"><span class="field-name">instructions</span>' +
+                     '<span class="field-value">' + html.escape(result["instructions"]) +
+                     '</span></div>')
+    return '<div class="server">' + "".join(parts) + '</div>'
 
 
 def page():
-    block = ""
-    note = instructions()
-    if note:
-        block = ('<div class="note"><div class="note-label">What the server tells an agent that connects'
-                 '</div>' + html.escape(note) + '</div>')
-    return PAGE.replace("__PORT__", str(MCP_PORT)).replace("__NOTE__", block)
+    return PAGE.replace("__PORT__", str(MCP_PORT)).replace("__NOTE__", server_block())
 
 
 def rpc(method, params=None):

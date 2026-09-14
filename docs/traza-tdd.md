@@ -378,6 +378,22 @@ de ir como texto anidado dentro de un pedido. Dos veces hoy me mordieron las com
 anidar: un test se compiló a medias y el pedido contestó `nil` sin decir nada. El archivo evita el
 problema de raíz, y de paso deja los tests en algo que se puede leer y revisar.
 
+## UTF-8 en el borde (ciclos 34 y 35)
+
+| # | Test | Rojo | Verde | Qué se implementó |
+| --- | --- | --- | --- | --- |
+| 34 | un cuerpo con bytes UTF-8 llega entero al tool, y la respuesta sale como bytes UTF-8 | el pedido con `café` devolvía cinco caracteres | 50/50 | `textFromWire:` y `wireStringFor:` en el adaptador (`MCPServer`), usadas por `handleRequestBody:` |
+| 35 | el file out escribe UTF-8 | pasó en verde de entrada: ya lo era | 50/50 | nada; los archivos ya se escriben UTF-8 porque el VM se lanza con `-encoding UTF-8`, y queda la guarda |
+
+Hallazgos del entorno:
+
+- La capa HTTP de Cuis es de bytes en los dos sentidos: `content` viene con un carácter por byte, y
+  `sendResponse:content:` usa `aString size` como tamaño en bytes. Por eso la traducción va en el
+  adaptador y no adentro del protocolo.
+- **`String>>asUtf8BytesOrByteString` está rota en esta imagen** (`SmallInteger>>isSeparator`); la
+  conversión explícita, byte por byte, es la que funciona.
+- El file out depende del `-encoding UTF-8` con el que se lanza el VM.
+
 ## File out
 
 Quedaron `src/MCPServer.pck.st` (10 clases de producción) y

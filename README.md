@@ -253,12 +253,27 @@ ejemplo una lectura de stdin bloqueante, que ya medimos), ni el vigilante la
 desengancha. La única salida es matar el VM desde afuera, y se pierde el estado
 no guardado (el código evaluado sí queda en el archivo de cambios).
 
-### 2. Codificación de caracteres (encontrado, sin decidir)
+### 2. Codificación de caracteres — **resuelto** (13/09/2026)
 
-El cuerpo de los pedidos se lee como bytes, sin decodificar UTF-8: un "í" llegó
-como "Ã" a la ventana de la imagen. En MCP esto no es opcional, porque JSON es
-UTF-8 por definición. Cuis trae las piezas para resolverlo
-(`Utf8EncodedWriteStream`, `asUtf8Bytes`, UnicodeData).
+El cuerpo de los pedidos se leía como bytes, sin decodificar UTF-8: un `café` con los bytes
+`63 61 66 c3 a9` llegaba al tool como **cinco** caracteres en vez de cuatro. En MCP esto no era
+opcional: la spec dice que los mensajes JSON-RPC **deben** estar en UTF-8, así que era un
+incumplimiento, no una mejora.
+
+**El arreglo, y por qué ahí.** La capa HTTP de Cuis es de bytes en los dos sentidos: el `content`
+que llega es un string con un carácter por byte, y al responder se escribe un byte por carácter
+(por eso la respuesta "se veía bien" por accidente: los dos caracteres basura de la mala lectura
+eran, justamente, los dos bytes UTF-8). Así que la traducción va en el adaptador, en `MCPServer`:
+`textFromWire:` lee los bytes como UTF-8 al entrar y `wireStringFor:` escribe el texto como UTF-8
+al salir, con `String fromUtf8Bytes:` y `asUtf8Bytes` (las mismas piezas que usa el `WebClient` de
+Cuis). Adentro, todo es texto: el protocolo no sabe de bytes.
+
+**Verificado en vivo**: el mismo pedido que antes devolvía cinco caracteres ahora devuelve cuatro,
+y en el cable el acento sale como los bytes `c3 a9`.
+
+**Y los archivos ya estaban bien**: el file out escribe UTF-8 porque el VM se lanza con
+`-encoding UTF-8` (así lo hace el launcher de Cuis). No se tocó nada, y quedó un test que lo fija
+como guarda, para que se note si alguna vez se lanza distinto.
 
 ### 3. Condiciones de carrera entre el humano y el agente (una decidida, otra pendiente)
 

@@ -232,14 +232,16 @@ handleRequest: aWebRequest
 		ifFalse: [ aWebRequest send200Response: body contentType: 'application/json' ].
 	^ self! !
 
-!MCPServer methodsFor: 'handling' stamp: 'S.V. 13/Sep/2026 12:33:13'!
+!MCPServer methodsFor: 'handling' stamp: 'S.V. 13/Sep/2026 21:23:32'!
 handleRequestBody: aString
-	"Answer the response body for a request body, or nil for a notification.
-	Here is where JSON meets the protocol."
+	"Answer the body to send, or nil for a notification. The body comes off the wire as bytes
+	and leaves the same way, so this is where the translation happens: in, the bytes are read as
+	UTF-8; out, the text is written as UTF-8. Inside, everything is text."
 	| response |
-	response := self protocol handleMessage: (Json readFrom: aString readStream).
+	response := self protocol handleMessage: (Json readFrom: (self textFromWire: aString) readStream).
 	response ifNil: [ ^ nil ].
-	^ Json render: response! !
+	^ self wireStringFor: (Json render: response)
+! !
 
 !MCPServer methodsFor: 'private' stamp: 'S.V. 13/Sep/2026 20:46:43'!
 errorAlreadyListening
@@ -266,6 +268,54 @@ setPort: aPort catalogue: aCatalogue
 	"Private. Instances are created with the class-side factory."
 	port := aPort.
 	catalogue := aCatalogue! !
+
+!MCPServer methodsFor: 'private' stamp: 'S.V. 13/Sep/2026 21:23:32'!
+textFromWire: aString
+	"Private. Answer the text of a body that came off the wire. The HTTP layer of Cuis hands
+	bytes as characters, one per byte, and JSON is UTF-8 by definition: reading them as UTF-8
+	turns one character where there were two bytes."
+	^ String fromUtf8Bytes: aString asByteArray
+! !
+
+!MCPServer methodsFor: 'private' stamp: 'S.V. 13/Sep/2026 21:23:32'!
+wireStringFor: aString
+	"Private. Answer the body to put on the wire: the text as UTF-8 bytes, one character per
+	byte, which is what the HTTP layer of Cuis writes."
+	| stream |
+	stream := WriteStream on: String new.
+	aString asUtf8Bytes do: [ :byte | stream nextPut: (Character codePoint: byte) ].
+	^ stream contents
+! !
+
+!MCPServer methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 21:23:32'!
+test09DecodesTheBodyAsUtf8
+	"The body arrives as bytes, and JSON is UTF-8 by definition: a character that takes two
+	bytes on the wire has to reach the tool as one character, not two. The accent is built from
+	its code point, because this source travels through the same boundary."
+	| accent code body wire response result |
+	accent := String with: (Character codePoint: 233).
+	code := '| s | s := ''caf', accent, '''. s size'.
+	body := '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"print_it","arguments":{"code":"',
+		code, '"}}}'.
+	wire := WriteStream on: String new.
+	body asUtf8Bytes do: [ :byte | wire nextPut: (Character codePoint: byte) ].
+	response := (MCPServer on: 8767 tools: { MCPServerWorkspaceTools })
+		handleRequestBody: wire contents.
+	result := Json readFrom: response readStream.
+	self assert: ((((result at: 'result') at: 'content') first) at: 'text') equals: '4'
+! !
+
+!MCPServer methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 21:23:32'!
+test10EncodesTheResponseAsUtf8
+	"The response leaves as UTF-8 bytes: the client can decode it and get the character back,
+	instead of receiving the raw code point as a byte."
+	| accent body response decoded |
+	accent := String with: (Character codePoint: 233).
+	body := '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"print_it","arguments":{"code":"String with: (Character codePoint: 233)"}}}'.
+	response := (MCPServer on: 8767 tools: { MCPServerWorkspaceTools }) handleRequestBody: body.
+	decoded := String fromUtf8Bytes: response asByteArray.
+	self assert: (decoded findString: accent) > 0
+! !
 
 !MCPServer class methodsFor: 'instance creation' stamp: 'S.V. 13/Sep/2026 12:33:13'!
 on: aPort tools: aCollectionOfClasses

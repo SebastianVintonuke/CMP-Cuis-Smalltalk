@@ -767,13 +767,13 @@ inputSchemaFor: aDescriptor
 	schema at: 'required' put: aDescriptor argumentNames asArray.
 	^ schema! !
 
-!MCPServerProtocol methodsFor: 'answers' stamp: 'S.V. 13/Sep/2026 21:44:10'!
+!MCPServerProtocol methodsFor: 'answers' stamp: 'S.V. 13/Sep/2026 21:59:14'!
 instructions
 	"Answer what the handshake tells the client about the image it is working in: the things it
-	could not guess. It is not a rulebook: no preference and no prohibition, because the
-	preference between tools emerges from the catalogue, which declares each one with its
-	description and its schema."
-	^ 'This server exposes the operations a programmer performs in the windows of a live Cuis image: the Workspace, the Browser and the Test Runner. The image is alive and shared: the person who owns it is there, can see every change you make, and may be editing at the same time. What you write is stamped with the author of the owner of the image, and is their responsibility: the server neither invents an author nor signs for itself.'
+	could not guess. It is philosophy, not implementation: a set of tools, an image that is alive
+	and shared, and who answers for what is written. It does not name the windows of the image:
+	that split is ours, it maps the interface for us, and it says nothing to an agent."
+	^ 'This server offers a set of tools to work in a live image, the same way the Browser was designed for a person: to work with the image, not to change something nobody will ever see. Someone else is working in that image. What you write is stamped with the author of the owner of the image, and is their responsibility.'
 ! !
 
 !MCPServerProtocol methodsFor: 'answers' stamp: 'S.V. 13/Sep/2026 12:32:32'!

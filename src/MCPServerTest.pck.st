@@ -471,15 +471,18 @@ test07ToolsListSaysWhichWindowEachToolComesFrom
 	meta := tool at: '_meta'.
 	self assert: (meta at: 'system') equals: 'Workspace'! !
 
-!MCPServerProtocolTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 21:43:57'!
+!MCPServerProtocolTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 21:59:03'!
 test08InitializeTellsTheClientAboutTheImage
-	"The handshake says what a client cannot guess: that the image is alive and shared with
-	whoever owns it, and that what is written is stamped with their author."
+	"The handshake says what a client cannot guess, as philosophy and not as implementation: that
+	the image is alive, that someone else is working in it, and that what is written is stamped
+	with their author. And it does not present the tools as the windows of the image: that split
+	is ours, it helps us map the interface, and it says nothing to an agent."
 	| result instructions |
 	result := (self newProtocol handleMessage: (self requestMethod: 'initialize' id: 1)) at: 'result'.
 	instructions := result at: 'instructions' ifAbsent: [ '' ].
 	self assert: (instructions findString: 'live') > 0.
-	self assert: (instructions findString: 'author') > 0
+	self assert: (instructions findString: 'author') > 0.
+	self assert: (instructions findString: 'Workspace') equals: 0
 ! !
 
 !MCPServerProtocolTest methodsFor: 'private' stamp: 'S.V. 13/Sep/2026 12:32:11'!

@@ -8,7 +8,11 @@ is the port that server listens on.
 It serves a page at http://127.0.0.1:<panel> that:
   - lists the tools of the MCP server (tools/list),
   - builds a form per tool with the fields of its inputSchema,
-  - and has a button to run it (tools/call) and see the answer.
+  - has a button to run it (tools/call) and see the answer,
+  - and gives every call the request id by which it can be cancelled: while a call runs, the page
+    shows its id and a button that sends notifications/cancelled for it. The client cancels the
+    request it issued, which is what the protocol asks for, and a cancelled request answers
+    nothing: the page says so instead of showing an answer that will not come.
 
 The list is dynamic: it comes from tools/list, and there are no tool names here. The MCP
 requests are made by this process (not by the browser), so there is no CORS or transport issue.
@@ -55,6 +59,8 @@ PAGE = """<!doctype html>
         background: #8881; border-radius: 5px; font-size: 13px; max-height: 320px; overflow: auto; }
   .ok { border-left: 3px solid #2e7d32; }
   .err { border-left: 3px solid #c62828; }
+  .cancelled { border-left: 3px solid #b26a00; }
+  .buttons { display: flex; gap: 10px; align-items: center; }
   .server { border-left: 3px solid #8886; padding: 2px 0 2px 12px; margin-bottom: 18px; }
   .field { margin-bottom: 6px; font-size: 13px; }
   .field-name { font-family: ui-monospace, monospace; font-size: 12px; opacity: .65; }
@@ -74,6 +80,7 @@ __NOTE__
 </div>
 <div id="tools"></div>
 <script>
+let seq = 0;
 async function load() {
   const tools = document.getElementById('tools');
   const sub = document.getElementById('sub');
@@ -140,25 +147,39 @@ function card(t) {
     box.appendChild(el);
     inputs[name] = el;
   });
+  const buttons = document.createElement('div');
+  buttons.className = 'buttons';
   const b = document.createElement('button');
   b.textContent = 'Run';
-  box.appendChild(b);
+  buttons.appendChild(b);
+  const cancel = document.createElement('button');
+  cancel.className = 'ghost';
+  cancel.textContent = 'Cancel';
+  cancel.disabled = true;
+  buttons.appendChild(cancel);
+  box.appendChild(buttons);
   const out = document.createElement('pre');
   out.style.display = 'none';
   box.appendChild(out);
+  let running = null;   // the id of the call in flight, which is what a cancellation names
   b.onclick = async () => {
     const args = {};
     Object.keys(inputs).forEach(k => { args[k] = inputs[k].value; });
+    running = 'panel-' + (++seq);
     b.disabled = true;
+    cancel.disabled = false;
     out.style.display = 'block';
     out.className = '';
-    out.textContent = 'running...';
+    out.textContent = 'running... (request id ' + running + ')';
     try {
-      const r = await fetch('/api/call', { method: 'POST', body: JSON.stringify({ name: t.name, arguments: args }) });
+      const r = await fetch('/api/call', { method: 'POST', body: JSON.stringify({ id: running, name: t.name, arguments: args }) });
       const raw = await r.json();
       const showRaw = document.getElementById('raw').checked;
       const res = raw && raw.result;
-      if (res && res.content && res.content.length) {
+      if (raw === null) {
+        out.className = 'cancelled';
+        out.textContent = 'no answer: request ' + running + ' was cancelled before it answered.';
+      } else if (res && res.content && res.content.length) {
         out.className = res.isError ? 'err' : 'ok';
         out.textContent = (res.isError ? '[error] ' : '') + res.content[0].text +
           (showRaw ? '\\n\\n--- raw JSON ---\\n' + JSON.stringify(raw, null, 2) : '');
@@ -170,7 +191,23 @@ function card(t) {
       out.className = 'err';
       out.textContent = 'Could not call it: ' + e.message;
     }
+    running = null;
+    cancel.disabled = true;
     b.disabled = false;
+  };
+  cancel.onclick = async () => {
+    if (!running) return;
+    const id = running;
+    cancel.disabled = true;
+    try {
+      const r = await fetch('/api/cancel', { method: 'POST', body: JSON.stringify({ requestId: id, reason: 'cancelled from the panel' }) });
+      const answer = await r.json();
+      out.textContent += answer.sent
+        ? ' -- cancellation sent for ' + id + ' (the server answered ' + answer.status + ')'
+        : ' -- could not send the cancellation: ' + JSON.stringify(answer);
+    } catch (e) {
+      out.textContent += ' -- could not send the cancellation: ' + e.message;
+    }
   };
   return box;
 }
@@ -216,12 +253,10 @@ def page():
     return PAGE.replace("__PORT__", str(MCP_PORT)).replace("__NOTE__", server_block())
 
 
-def rpc(method, params=None):
-    """One JSON-RPC request to the MCP server."""
-    _COUNTER[0] += 1
-    payload = {"jsonrpc": "2.0", "id": _COUNTER[0], "method": method}
-    if params is not None:
-        payload["params"] = params
+def post(payload):
+    """One POST to the MCP server: answer the status it gave back and the body it answered, if
+    there is one. A notification is accepted with 202 and no body, and a cancelled request is
+    answered the same way."""
     request = urllib.request.Request(
         f"http://127.0.0.1:{MCP_PORT}/mcp",
         data=json.dumps(payload).encode("utf-8"),
@@ -233,11 +268,31 @@ def rpc(method, params=None):
     with urllib.request.urlopen(request, timeout=180) as response:
         body = response.read().decode("utf-8", "replace")
         content_type = response.headers.get("Content-Type", "")
+        status = response.status
     if "text/event-stream" in content_type:
         # Streamable HTTP may answer over SSE: keep the last data: line.
         lines = [line[5:].strip() for line in body.splitlines() if line.startswith("data:")]
         body = lines[-1] if lines else ""
-    return json.loads(body) if body.strip() else None
+    return status, (json.loads(body) if body.strip() else None)
+
+
+def rpc(method, params=None, request_id=None):
+    """One JSON-RPC request to the MCP server, under the id the caller gives it (that id is the
+    one a cancellation names), or under one of this panel's own."""
+    _COUNTER[0] += 1
+    payload = {"jsonrpc": "2.0", "id": _COUNTER[0] if request_id is None else request_id,
+               "method": method}
+    if params is not None:
+        payload["params"] = params
+    return post(payload)[1]
+
+
+def notify(method, params=None):
+    """One JSON-RPC notification, which carries no id: what matters is the status it answers."""
+    payload = {"jsonrpc": "2.0", "method": method}
+    if params is not None:
+        payload["params"] = params
+    return post(payload)[0]
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -269,11 +324,20 @@ class Handler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length", 0) or 0)
         try:
             data = json.loads(self.rfile.read(length) or b"{}")
-            response = rpc(
-                "tools/call",
-                {"name": data.get("name"), "arguments": data.get("arguments") or {}},
-            )
-            self._send(200, json.dumps(response))
+            if self.path.startswith("/api/cancel"):
+                status = notify("notifications/cancelled", {
+                    "requestId": data.get("requestId"),
+                    "reason": data.get("reason") or "cancelled from the panel",
+                })
+                self._send(200, json.dumps({"sent": True, "requestId": data.get("requestId"),
+                                            "status": status}))
+            else:
+                response = rpc(
+                    "tools/call",
+                    {"name": data.get("name"), "arguments": data.get("arguments") or {}},
+                    request_id=data.get("id"),
+                )
+                self._send(200, json.dumps(response))
         except Exception as error:  # noqa: BLE001
             self._send_error(error)
 

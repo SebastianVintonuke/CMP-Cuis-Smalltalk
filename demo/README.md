@@ -8,6 +8,14 @@ nombres de herramientas en el panel.
 Es un cliente del producto y nada más: asume que el servidor MCP ya está corriendo
 dentro de la imagen. Lo único que hay que decirle es en qué puerto escucha.
 
+Cada llamada lleva **el identificador del pedido**, que lo elige la página (`panel-1`,
+`panel-2`, ...) y que se muestra mientras corre. Al lado del botón **Run** está el **Cancel**,
+que manda `notifications/cancelled` con ese id: es el cliente el que cancela el pedido que él
+mismo emitió, que es lo que pide el protocolo. El pedido cancelado **no contesta** —la spec dice
+que no debe hacerlo— así que el panel avisa que se canceló, en vez de mostrar una respuesta que
+no va a llegar. Como el panel atiende en paralelo (un hilo por pedido), puede mandar la
+cancelación mientras la llamada sigue colgada.
+
 ```bash
 python3 demo/panel-mcp.py --port 8790 --panel 8899
 ```
@@ -18,8 +26,9 @@ python3 demo/panel-mcp.py --port 8790 --panel 8899
 | `--panel` | puerto donde este panel sirve la página | `8899` |
 
 Queda en `http://127.0.0.1:8899`. En pantalla: **Reload tools**, un tilde para ver el
-JSON crudo, y una tarjeta por herramienta con sus campos y el botón **Run**. La
-interfaz está en inglés (los comentarios del código y la documentación, en español).
+JSON crudo, y una tarjeta por herramienta con sus campos, el botón **Run** y el **Cancel**
+de la llamada que esté corriendo. La interfaz está en inglés (los comentarios del código y la
+documentación, en español).
 
 Los pedidos al MCP los hace el panel (Python), no el navegador: no hay problema de
 CORS ni de transporte.

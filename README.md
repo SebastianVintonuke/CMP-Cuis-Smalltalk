@@ -107,9 +107,22 @@ headless aparte.
 4. **`_meta.system` dice en qué ventana vive la herramienta**, incluido
    Workspace para `evaluate`. Si la misma operación está en más de una ventana,
    se listan todas.
-5. **`evaluate` es el Workspace.** Se expone, pero la interfaz expresa que lo
-   esperable es pasar por las herramientas específicas; `evaluate` es la
-   particularidad, no la puerta principal.
+5. **`evaluate` es el Workspace.** *(Escrita así el 13/09 temprano.)* Se expone, pero la
+   interfaz expresa que lo esperable es pasar por las herramientas específicas; `evaluate` es
+   la particularidad, no la puerta principal.
+
+   **Evaluación y resolución (13/09, noche).** La decisión nació para regular una excepción a
+   nuestra propia regla de nombres: `evaluate` es un nombre estándar, que un agente reconoce sin
+   pensar, y por eso iba a necesitar una aclaración. Pero lo implementamos como `print_it`, que
+   es el mensaje real del Workspace, y entonces la excepción desapareció: ya no es una puerta
+   principal ni una particularidad, es **una operación de ventana más**, como renombrar una
+   clase. La preferencia emerge del catálogo —cada herramienta se declara con su descripción y
+   su esquema—, así que no hay que proclamarla; y una advertencia del servidor sería, además,
+   ponerle al agente una regla que al humano no se le pone.
+
+   Lo que sí sigue valiendo, y es de donde venía la decisión, es lo otro: con `print_it` se
+   puede todo, así que **las herramientas no son un sandbox**. La defensa no está en lo que las
+   herramientas permiten, sino en quién puede llegar al servidor.
 6. **Futuro, no ahora:** `annotations` (`readOnlyHint`, `destructiveHint`,
    `idempotentHint`, `openWorldHint`) y la lista dinámica de herramientas
    (`notifications/tools/list_changed`) para expresar permisos. Se anota para

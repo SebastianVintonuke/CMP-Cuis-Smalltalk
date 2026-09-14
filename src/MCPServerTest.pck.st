@@ -132,7 +132,7 @@ I test the tool as a command: running it and answering a result.!
 !MCPServerWorkspaceToolsTest commentStamp: '<historical>' prior: 0!
 I test the Workspace facade: the operations it exposes as tools.!
 
-!MCPServerBrowserToolsTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 20:57:00'!
+!MCPServerBrowserToolsTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 21:24:02'!
 tearDown
 	"The tests define and remove methods and classes in the scratch class: leave it clean."
 	| scratch |
@@ -140,7 +140,7 @@ tearDown
 		(Smalltalk at: name ifAbsent: [ nil ]) ifNotNil: [ :each | each removeFromSystem ] ].
 	scratch := Smalltalk at: #MCPServerBrowserToolsScratch ifAbsent: [ nil ].
 	scratch ifNil: [ ^ self ].
-	#(#zap) do: [ :each |
+	#(#zap #pruebaConAcento) do: [ :each |
 		(scratch includesSelector: each) ifTrue: [ scratch removeSelector: each ] ]
 ! !
 
@@ -337,6 +337,23 @@ test21DefinesAClass
 	self assert: class category equals: #MCPServerTest
 ! !
 
+!MCPServerBrowserToolsTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 21:24:02'!
+test21WritesTheFileOutAsUtf8
+	"The file out writes UTF-8, which is what the repository and the editors expect, and what a
+	file-in expects on the way back. The accent is built from its code point, because this source
+	travels through the same boundary. The file is decoded as UTF-8 and the accent has to be
+	there; in latin-1 it would come out as two characters."
+	| accent path text scratch |
+	accent := String with: (Character codePoint: 233).
+	scratch := MCPServerBrowserToolsScratch.
+	scratch compile: 'pruebaConAcento ^ ''caf', accent, '''' classified: 'testing'.
+	path := '/tmp/MCPServerTest-con-acento.pck.st'.
+	MCPServerBrowserTools new fileOutPackage: 'MCPServerTest' to: path.
+	text := WriteStream on: String new.
+	(FileEntry withAbsolutePathName: path) readStreamDo: [ :stream | text nextPutAll: stream upToEnd ].
+	self assert: ((String fromUtf8Bytes: text contents asByteArray) findString: accent) > 0
+! !
+
 !MCPServerBrowserToolsTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 20:57:00'!
 test22RefusesToDefineAClassThatAlreadyExists
 	"Defining does not redefine: a class that is already there is said, not overwritten."
@@ -453,6 +470,17 @@ test07ToolsListSaysWhichWindowEachToolComesFrom
 	tool := tools detect: [ :each | (each at: 'name') = 'print_it' ].
 	meta := tool at: '_meta'.
 	self assert: (meta at: 'system') equals: 'Workspace'! !
+
+!MCPServerProtocolTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 21:43:57'!
+test08InitializeTellsTheClientAboutTheImage
+	"The handshake says what a client cannot guess: that the image is alive and shared with
+	whoever owns it, and that what is written is stamped with their author."
+	| result instructions |
+	result := (self newProtocol handleMessage: (self requestMethod: 'initialize' id: 1)) at: 'result'.
+	instructions := result at: 'instructions' ifAbsent: [ '' ].
+	self assert: (instructions findString: 'live') > 0.
+	self assert: (instructions findString: 'author') > 0
+! !
 
 !MCPServerProtocolTest methodsFor: 'private' stamp: 'S.V. 13/Sep/2026 12:32:11'!
 callRequestFor: aToolName arguments: aDictionary

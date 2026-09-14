@@ -736,7 +736,7 @@ errorResponseFor: anId code: anInteger message: aString
 	response at: 'error' put: error.
 	^ response! !
 
-!MCPServerProtocol methodsFor: 'answers' stamp: 'S.V. 13/Sep/2026 12:32:32'!
+!MCPServerProtocol methodsFor: 'answers' stamp: 'S.V. 13/Sep/2026 21:44:10'!
 initializeResult
 	| result capabilities serverInfo |
 	capabilities := Dictionary new.
@@ -748,7 +748,9 @@ initializeResult
 	result at: 'protocolVersion' put: '2025-06-18'.
 	result at: 'capabilities' put: capabilities.
 	result at: 'serverInfo' put: serverInfo.
-	^ result! !
+	result at: 'instructions' put: self instructions.
+	^ result
+! !
 
 !MCPServerProtocol methodsFor: 'answers' stamp: 'S.V. 13/Sep/2026 12:32:32'!
 inputSchemaFor: aDescriptor
@@ -764,6 +766,15 @@ inputSchemaFor: aDescriptor
 	schema at: 'properties' put: properties.
 	schema at: 'required' put: aDescriptor argumentNames asArray.
 	^ schema! !
+
+!MCPServerProtocol methodsFor: 'answers' stamp: 'S.V. 13/Sep/2026 21:44:10'!
+instructions
+	"Answer what the handshake tells the client about the image it is working in: the things it
+	could not guess. It is not a rulebook: no preference and no prohibition, because the
+	preference between tools emerges from the catalogue, which declares each one with its
+	description and its schema."
+	^ 'This server exposes the operations a programmer performs in the windows of a live Cuis image: the Workspace, the Browser and the Test Runner. The image is alive and shared: the person who owns it is there, can see every change you make, and may be editing at the same time. What you write is stamped with the author of the owner of the image, and is their responsibility: the server neither invents an author nor signs for itself.'
+! !
 
 !MCPServerProtocol methodsFor: 'answers' stamp: 'S.V. 13/Sep/2026 12:32:32'!
 resultResponseFor: anId result: aDictionary

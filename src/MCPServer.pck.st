@@ -767,13 +767,16 @@ inputSchemaFor: aDescriptor
 	schema at: 'required' put: aDescriptor argumentNames asArray.
 	^ schema! !
 
-!MCPServerProtocol methodsFor: 'answers' stamp: 'S.V. 13/Sep/2026 21:59:14'!
+!MCPServerProtocol methodsFor: 'answers' stamp: 'S.V. 13/Sep/2026 22:17:42'!
 instructions
-	"Answer what the handshake tells the client about the image it is working in: the things it
-	could not guess. It is philosophy, not implementation: a set of tools, an image that is alive
-	and shared, and who answers for what is written. It does not name the windows of the image:
-	that split is ours, it maps the interface for us, and it says nothing to an agent."
-	^ 'This server offers a set of tools to work in a live image, the same way the Browser was designed for a person: to work with the image, not to change something nobody will ever see. Someone else is working in that image. What you write is stamped with the author of the owner of the image, and is their responsibility.'
+	"Answer what the handshake tells the client about the image it is working in. It is philosophy,
+	not implementation, and it does not name the windows of the image: that split is ours, it maps
+	the interface for us, and it says nothing to an agent."
+	^ 'This server connects you to a living Smalltalk environment. You are not editing static files in isolation; you are collaborating inside a running system alongside a human. Every change you make is immediately alive and present in their world.
+
+The system hides nothing from you. You possess the absolute freedom to redefine its very fabric on the fly. However, this profound malleability means that a careless action can shatter the environment.
+
+Keep in mind that every modification carries the human''s signature. They are staking their name on your work, so act with thoughtful judgment.'
 ! !
 
 !MCPServerProtocol methodsFor: 'answers' stamp: 'S.V. 13/Sep/2026 12:32:32'!

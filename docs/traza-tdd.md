@@ -402,15 +402,17 @@ Hallazgos del entorno:
 
 Qué dice el texto, y qué no:
 
-- **Qué dice**: que hay un conjunto de herramientas para trabajar en una imagen viva, pensado como
-  el Browser fue pensado para una persona (trabajar *con* la imagen, no cambiar algo que nadie va a
-  ver); que alguien más está trabajando en ella; y que lo que se escribe queda firmado con el autor
-  del dueño de la imagen, que es su responsabilidad.
+- **Qué dice** (texto final, escrito por Sebastian): que conecta a un entorno Smalltalk vivo; que
+  uno no está editando archivos estáticos en aislamiento sino colaborando dentro de un sistema en
+  marcha junto a un humano, y que cada cambio está vivo y presente en su mundo; que el sistema no
+  esconde nada y que la libertad de redefinirlo es absoluta, con la contracara de que un descuido
+  puede romper el entorno; y que cada modificación lleva la firma del humano, que está poniendo su
+  nombre en el trabajo.
 - **Qué no dice**, por decisión de Sebastian: no nombra las ventanas. La separación entre Workspace,
   Browser y Test Runner es nuestra, nos sirve para mapear la interfaz, y a un agente no le aporta
-  nada. Tampoco enuncia consecuencias concretas ("podría estar editando al mismo tiempo") ni
-  detalles de implementación (que el servidor no inventa autor): es **filosofía, no implementación**.
-  Un test lo sostiene: el texto no puede contener la palabra "Workspace".
+  nada. Tampoco enuncia consecuencias concretas ("podría estar editando al mismo tiempo"): es
+  **filosofía, no implementación**. Un test lo sostiene: el texto no puede contener la palabra
+  "Workspace".
 
 Ver la decisión 5 del README, con su evaluación y su resolución.
 

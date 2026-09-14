@@ -241,7 +241,7 @@ Acá se anotan los problemas que vamos encontrando, con la evidencia que los
 respalda. Los que ya tienen decisión la llevan anotada, pero **ninguna está
 implementada todavía**.
 
-### 1. Concurrencia: el trabajo del agente puede tomar la imagen entera
+### 1. Concurrencia: el trabajo del agente puede tomar la imagen entera — **resuelto** (13/09/2026)
 
 **Qué medimos** (servidor dentro de una imagen Cuis 7.8):
 
@@ -276,12 +276,33 @@ descartó a propósito: el humano puede congelar la imagen igual que el agente, 
 que no se le pone al agente una regla que al humano no se le pone (ver la decisión
 filosófica en "La idea").
 
-**Decidido en su lugar (sin implementar): cancelación.** El servidor implementa
-`notifications/cancelled`: al recibir la cancelación de un pedido en curso,
-interrumpe el proceso que lo está ejecutando, libera lo que corresponda y **no
-responde** ese pedido. El timeout queda del lado del cliente que pide, que es
-donde la spec de MCP lo pone. Falta definir el plazo del lado del cliente y cómo
-se interrumpe un proceso en Cuis.
+**Decidido e implementado (13/09/2026): cancelación.** El servidor atiende
+`notifications/cancelled`: al recibir la cancelación de un pedido en curso termina el
+**trabajador** que lo está ejecutando —no el handler del `WebServer`, que quedaría con la
+conexión abierta y sin nadie aceptando— y **no responde** ese pedido. La respuesta vacía viaja
+por el mismo canal que ya existía para las notificaciones y termina en `202` sin cuerpo, como
+pide el transporte. El timeout queda del lado del cliente que pide, que es donde la spec de MCP
+lo pone.
+
+Las piezas, y por qué están donde están:
+
+- **Un registro de los pedidos en vuelo** (`MCPServerInFlightRequests`), del servidor y por lo
+tanto compartido por todas las conexiones: una cancelación llega en **otro** pedido, así que el
+alcance no puede ser la conexión. Cada llamada se registra bajo el id del pedido y el alta
+contesta un **handle** que la llamada devuelve al terminar: así una llamada borra su propia
+entrada y nunca la de otra que use el mismo id (los ids son únicos por conexión, no en el mundo).
+Es el único estado mutable compartido del paquete y su candado vive adentro; el alta pasa
+**antes** del `resume` del trabajador —si no, una llamada que termina rápido dejaría una entrada
+que nadie sacaría— y la baja con el handle es idempotente.
+- **Un id ambiguo no se cancela.** Si dos llamadas comparten id (dos clientes que eligieron el
+mismo), no se corta ninguna: cortar trabajo que nadie pidió cortar es peor que no cortar. Con
+sesiones MCP (`Mcp-Session-Id`) el alcance se vuelve exacto; hasta entonces, esa es la regla.
+- **La interrupción es `terminate`**, la del propio Cuis: termina el proceso y corre sus
+`ensure:` antes de volver (verificado en la imagen). Cancelar no es rebobinar: lo que ya se
+compiló, quedó compilado.
+
+**De los tres bordes del adaptador**, el `202` ya está (verificado con un POST real contra el
+servidor): queda el `405` en el GET y la validación de `Origin`.
 
 **Lo que no se puede salvar.** Si la evaluación bloquea el VM entero (por
 ejemplo una lectura de stdin bloqueante, que ya medimos), ni el vigilante la

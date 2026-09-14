@@ -14,6 +14,16 @@ Object subclass: #MCPServerBrowserToolsScratch
 MCPServerBrowserToolsScratch class
 	instanceVariableNames: ''!
 
+!classDefinition: #MCPServerInFlightRecorder category: #MCPServerTest!
+Object subclass: #MCPServerInFlightRecorder
+	instanceVariableNames: 'suspendedWhenRegistered registerCount unregisterCount'
+	classVariableNames: ''
+	poolDictionaries: ''
+	category: 'MCPServerTest'!
+!classDefinition: 'MCPServerInFlightRecorder class' category: #MCPServerTest!
+MCPServerInFlightRecorder class
+	instanceVariableNames: ''!
+
 !classDefinition: #MCPServerBrowserToolsTest category: #MCPServerTest!
 TestCase subclass: #MCPServerBrowserToolsTest
 	instanceVariableNames: ''
@@ -22,6 +32,16 @@ TestCase subclass: #MCPServerBrowserToolsTest
 	category: 'MCPServerTest'!
 !classDefinition: 'MCPServerBrowserToolsTest class' category: #MCPServerTest!
 MCPServerBrowserToolsTest class
+	instanceVariableNames: ''!
+
+!classDefinition: #MCPServerInFlightRequestsTest category: #MCPServerTest!
+TestCase subclass: #MCPServerInFlightRequestsTest
+	instanceVariableNames: ''
+	classVariableNames: ''
+	poolDictionaries: ''
+	category: 'MCPServerTest'!
+!classDefinition: 'MCPServerInFlightRequestsTest class' category: #MCPServerTest!
+MCPServerInFlightRequestsTest class
 	instanceVariableNames: ''!
 
 !classDefinition: #MCPServerMethodCommentTest category: #MCPServerTest!
@@ -108,8 +128,14 @@ MCPServerWorkspaceToolsTest class
 !MCPServerBrowserToolsScratch commentStamp: '<historical>' prior: 0!
 I am the scratch class of the MCPServer tests: the tests define and remove methods here, so they never touch the code of the image.!
 
+!MCPServerInFlightRecorder commentStamp: '<historical>' prior: 0!
+I stand in for the registry of the calls in flight to record what it is asked and when: the tool talks to me the same way it talks to the real one, and I let a test see the order of things.!
+
 !MCPServerBrowserToolsTest commentStamp: '<historical>' prior: 0!
 I test the Browser facade: the operations a programmer performs from the Browser, exposed as MCP tools.!
+
+!MCPServerInFlightRequestsTest commentStamp: '<historical>' prior: 0!
+Tests for the registry of the calls that are running: what it keeps, what it removes, and what it refuses to stop.!
 
 !MCPServerMethodCommentTest commentStamp: '<historical>' prior: 0!
 I test the reader of a method comment, which is where the tool description comes from.!
@@ -131,6 +157,48 @@ I test the tool as a command: running it and answering a result.!
 
 !MCPServerWorkspaceToolsTest commentStamp: '<historical>' prior: 0!
 I test the Workspace facade: the operations it exposes as tools.!
+
+!MCPServerInFlightRecorder methodsFor: 'recording' stamp: 'S.V. 13/Sep/2026 23:40:30'!
+initialize
+	"The spy starts with nothing recorded."
+	super initialize.
+	suspendedWhenRegistered := false.
+	registerCount := 0.
+	unregisterCount := 0
+! !
+
+!MCPServerInFlightRecorder methodsFor: 'recording' stamp: 'S.V. 13/Sep/2026 23:40:30'!
+register: anId process: aProcess
+	"Record what the registry is asked and when, and answer a handle for the call to give back."
+	suspendedWhenRegistered := aProcess isSuspended.
+	registerCount := registerCount + 1.
+	^ anId -> aProcess
+! !
+
+!MCPServerInFlightRecorder methodsFor: 'recording' stamp: 'S.V. 13/Sep/2026 23:40:30'!
+registerCount
+	"Answer how many times the registry was asked to register a call."
+	^ registerCount
+! !
+
+!MCPServerInFlightRecorder methodsFor: 'recording' stamp: 'S.V. 13/Sep/2026 23:40:30'!
+unregister: aHandle
+	"Record that the call gave its handle back."
+	unregisterCount := unregisterCount + 1.
+	^ self
+! !
+
+!MCPServerInFlightRecorder methodsFor: 'recording' stamp: 'S.V. 13/Sep/2026 23:40:30'!
+unregisterCount
+	"Answer how many times a call gave its handle back."
+	^ unregisterCount
+! !
+
+!MCPServerInFlightRecorder methodsFor: 'recording' stamp: 'S.V. 13/Sep/2026 23:40:30'!
+wasSuspendedWhenRegistered
+	"Answer whether the worker had not been given the CPU yet when the registry was asked."
+	^ suspendedWhenRegistered
+! !
 
 !MCPServerBrowserToolsTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 21:24:02'!
 tearDown
@@ -390,6 +458,107 @@ test24RenamesAClass
 	self assert: (Smalltalk at: #MCPPruebaRenombrada) category equals: #MCPServerTest
 ! !
 
+!MCPServerInFlightRequestsTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 23:40:09'!
+test01RegistersACallAndAnswersItsHandle
+	"Registering a call makes it findable, and answers the handle that the call gives back
+	when it is done: the id it runs under and the process doing it."
+	| registry handle process |
+	registry := MCPServerInFlightRequests new.
+	self assert: registry isEmpty.
+	process := [ nil ] newProcess.
+	handle := registry register: 7 process: process.
+	self assert: registry size equals: 1.
+	self assert: handle key equals: 7.
+	self assert: handle value equals: process
+! !
+
+!MCPServerInFlightRequestsTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 23:40:09'!
+test02UnregistersWithTheHandle
+	"The call gives back the handle it was given, and the registry is empty again. Giving it
+	back twice is harmless: the second time there is nothing to remove."
+	| registry handle |
+	registry := MCPServerInFlightRequests new.
+	handle := registry register: 7 process: [ nil ] newProcess.
+	registry unregister: handle.
+	self assert: registry isEmpty.
+	registry unregister: handle.
+	self assert: registry isEmpty
+! !
+
+!MCPServerInFlightRequestsTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 23:40:09'!
+test03TwoCallsWithTheSameIdDoNotCrossRemove
+	"Two clients can use the same id: ids are unique per connection, not in the world. Each call
+	removes its own entry and never the entry of another, and that is what the handle is for."
+	| registry first second |
+	registry := MCPServerInFlightRequests new.
+	first := registry register: 7 process: [ nil ] newProcess.
+	second := registry register: 7 process: [ nil ] newProcess.
+	self assert: registry size equals: 2.
+	registry unregister: second.
+	self assert: registry size equals: 1.
+	registry unregister: first.
+	self assert: registry isEmpty
+! !
+
+!MCPServerInFlightRequestsTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 23:40:09'!
+test04CancellingACallStopsItsProcess
+	"Cancelling is stopping the process that is doing the work. It answers that it did, and the
+	entry is gone: the registry does not leave to the unwinding what it can settle itself."
+	| registry process |
+	registry := MCPServerInFlightRequests new.
+	process := [ (Semaphore new) wait ] newProcess.
+	process priority: Processor userInterruptPriority - 10.
+	registry register: 7 process: process.
+	process resume.
+	self assert: (registry cancel: 7).
+	self assert: process isTerminated.
+	self assert: registry isEmpty
+! !
+
+!MCPServerInFlightRequestsTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 23:40:09'!
+test05CancellingARequestThatIsNotRunningIsIgnored
+	"An id that is not running is not an error: cancellation is fire and forget, and the answer
+	says that nothing was stopped."
+	| registry |
+	registry := MCPServerInFlightRequests new.
+	self deny: (registry cancel: 99).
+	self assert: registry isEmpty
+! !
+
+!MCPServerInFlightRequestsTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 23:40:09'!
+test06AnAmbiguousIdIsNotCancelled
+	"Two calls with the same id at the same time: cancelling would stop a call that nobody asked
+	to stop, so nothing is stopped and the answer says so."
+	| registry first second |
+	registry := MCPServerInFlightRequests new.
+	first := [ (Semaphore new) wait ] newProcess.
+	second := [ (Semaphore new) wait ] newProcess.
+	registry register: 7 process: first.
+	registry register: 7 process: second.
+	first resume.
+	second resume.
+	self deny: (registry cancel: 7).
+	self assert: registry size equals: 2.
+	self deny: first isTerminated.
+	self deny: second isTerminated.
+	first terminate.
+	second terminate
+! !
+
+!MCPServerInFlightRequestsTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 23:40:09'!
+test07CancellingACallThatHasNotStartedYet
+	"A call that was registered and not yet given the CPU is stopped too. It never runs, so it
+	never cleans itself up: the registry is the one that removes the entry."
+	| registry process |
+	registry := MCPServerInFlightRequests new.
+	process := [ (Semaphore new) wait ] newProcess.
+	registry register: 7 process: process.
+	self assert: process isSuspended.
+	self assert: (registry cancel: 7).
+	self assert: process isTerminated.
+	self assert: registry isEmpty
+! !
+
 !MCPServerMethodCommentTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 12:31:29'!
 test01AnswersTheCommentOfAMethodSource
 	"The comment is the first quoted text after the message pattern; without it, nil."
@@ -398,6 +567,28 @@ test01AnswersTheCommentOfAMethodSource
 	^ aName') equals: 'Does something with aName.'.
 	self assert: (MCPServerMethodComment fromSource: 'foo: aName
 	^ aName') isNil! !
+
+!MCPServerProtocolTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 23:40:59'!
+cancellationFor: anId reason: aString
+	"Build the notification a client sends to stop a request it issued."
+	| request params |
+	request := Dictionary new.
+	request at: 'jsonrpc' put: '2.0'.
+	request at: 'method' put: 'notifications/cancelled'.
+	params := Dictionary new.
+	params at: 'requestId' put: anId.
+	params at: 'reason' put: aString.
+	request at: 'params' put: params.
+	^ request
+! !
+
+!MCPServerProtocolTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 23:40:59'!
+newProtocolInFlight: aRegistry
+	"Answer a protocol that knows the tools and keeps its calls in flight in the given registry."
+	^ MCPServerProtocol
+		on: (MCPServerCatalogueBuilder buildFrom: { MCPServerWorkspaceTools })
+		inFlight: aRegistry
+! !
 
 !MCPServerProtocolTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 12:32:11'!
 test01InitializeAnswersTheProtocolVersionAndTheToolsCapability
@@ -486,6 +677,66 @@ test08InitializeTellsTheClientAboutTheImage
 	self assert: (instructions findString: 'signature') > 0.
 	self assert: (instructions findString: 'Workspace') equals: 0.
 	self assert: instructions lines size equals: 1
+! !
+
+!MCPServerProtocolTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 23:40:59'!
+test09ACancellationNotificationStopsTheRegisteredCall
+	"The client that issued a request says it should be stopped, and it is: the worker running it is
+	terminated and its entry leaves the registry. The notification answers nothing, because it is a
+	notification: there is no id to answer to."
+	| registry protocol process |
+	registry := MCPServerInFlightRequests new.
+	protocol := self newProtocolInFlight: registry.
+	process := [ (Semaphore new) wait ] newProcess.
+	registry register: 7 process: process.
+	process resume.
+	self assert: (protocol handleMessage: (self cancellationFor: 7 reason: 'the human asked')) isNil.
+	self assert: process isTerminated.
+	self assert: registry isEmpty
+! !
+
+!MCPServerProtocolTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 23:40:59'!
+test10ACancellationForAnUnknownRequestIsIgnored
+	"A request that is not running is not an error and not a reason to complain: cancellation is
+	fire and forget, and the protocol keeps working after ignoring it."
+	| registry protocol |
+	registry := MCPServerInFlightRequests new.
+	protocol := self newProtocolInFlight: registry.
+	self assert: (protocol handleMessage: (self cancellationFor: 99 reason: '')) isNil.
+	self assert: registry isEmpty.
+	self assert: ((protocol handleMessage: (self requestMethod: 'ping' id: 1)) at: 'id') equals: 1
+! !
+
+!MCPServerProtocolTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 23:40:59'!
+test11ACancellationWithNoParamsIsIgnored
+	"A malformed cancellation is ignored too: whatever comes in a notification cannot turn into an
+	error, or the fire and forget nature is lost."
+	| protocol request |
+	protocol := self newProtocolInFlight: MCPServerInFlightRequests new.
+	request := Dictionary new.
+	request at: 'jsonrpc' put: '2.0'.
+	request at: 'method' put: 'notifications/cancelled'.
+	self assert: (protocol handleMessage: request) isNil
+! !
+
+!MCPServerProtocolTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 23:40:59'!
+test12ACancellationStopsOnlyTheCallItNames
+	"The cancellation names one request, and only that call is stopped: the others keep running,
+	which is what makes it usable when several clients are working in the same image."
+	| registry protocol first second |
+	registry := MCPServerInFlightRequests new.
+	protocol := self newProtocolInFlight: registry.
+	first := [ (Semaphore new) wait ] newProcess.
+	second := [ (Semaphore new) wait ] newProcess.
+	registry register: 7 process: first.
+	registry register: 8 process: second.
+	first resume.
+	second resume.
+	protocol handleMessage: (self cancellationFor: 7 reason: '').
+	self assert: first isTerminated.
+	self deny: second isTerminated.
+	self assert: registry size equals: 1.
+	second terminate
 ! !
 
 !MCPServerProtocolTest methodsFor: 'private' stamp: 'S.V. 13/Sep/2026 12:32:11'!
@@ -602,6 +853,57 @@ test10EncodesTheResponseAsUtf8
 	self assert: (decoded findString: accent) > 0
 ! !
 
+!MCPServerTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 23:42:12'!
+test11ANotificationIsAnsweredWith202AndNoBody
+	"The transport is explicit: a notification is accepted with 202 and no body, and that is also
+	what a request that was cancelled gets, because there is nothing to answer. The check is a real
+	HTTP request to the server that this test starts."
+	| server response |
+	server := MCPServer on: 8797 tools: { MCPServerWorkspaceTools }.
+	[ server start.
+	  response := WebClient
+		  httpPost: 'http://127.0.0.1:8797/mcp'
+		  content: '{"jsonrpc":"2.0","method":"notifications/initialized"}'
+		  type: 'application/json'.
+	  self assert: response code equals: 202 ]
+		ensure: [ server destroy ]
+! !
+
+!MCPServerTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 23:42:12'!
+test12ACancellationStopsARequestOverHttp
+	"A request that is running is stopped by the client that issued it: the request gets no answer,
+	the call disappears from the server, and the server keeps taking requests afterwards. The test
+	does it over HTTP and with two clients: one waiting on the request, one sending the cancellation."
+	| server call callResponse tries response |
+	server := MCPServer on: 8791 tools: { MCPServerWorkspaceTools }.
+	callResponse := nil.
+	[ server start.
+	  call := [ callResponse := WebClient
+		  httpPost: 'http://127.0.0.1:8791/mcp'
+		  content: '{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"print_it","arguments":{"code":"(Semaphore new) wait"}}}'
+		  type: 'application/json' ] newProcess.
+	  call resume.
+	  tries := 0.
+	  [ server inFlight isEmpty and: [ tries < 300 ] ] whileTrue: [ (Delay forMilliseconds: 10) wait. tries := tries + 1 ].
+	  self assert: server inFlight size equals: 1.
+	  response := WebClient
+		  httpPost: 'http://127.0.0.1:8791/mcp'
+		  content: '{"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":7,"reason":"the human asked"}}'
+		  type: 'application/json'.
+	  self assert: response code equals: 202.
+	  self assert: server inFlight isEmpty.
+	  tries := 0.
+	  [ call isTerminated not and: [ tries < 300 ] ] whileTrue: [ (Delay forMilliseconds: 10) wait. tries := tries + 1 ].
+	  self assert: callResponse notNil.
+	  self assert: callResponse code equals: 202.
+	  response := WebClient
+		  httpPost: 'http://127.0.0.1:8791/mcp'
+		  content: '{"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"print_it","arguments":{"code":"2 + 2"}}}'
+		  type: 'application/json'.
+	  self assert: (response content findString: '4') > 0 ]
+		ensure: [ call ifNotNil: [ call terminate ]. server destroy ]
+! !
+
 !MCPServerTestingToolsTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 22:35:59'!
 test01RunsTheTestsOfATestClass
 	"The Test Runner over one class: the counts, and the defects if there are any. The expected
@@ -699,6 +1001,53 @@ test03RunsBelowTheUIsPriority
 			forMethod: (MCPServerWorkspaceTools compiledMethodAt: #printIt:)).
 	result := tool executeWith: #('Processor activeProcess priority').
 	self assert: result text asNumber < Processor userInterruptPriority
+! !
+
+!MCPServerToolTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 23:40:30'!
+test04AFinishedCallLeavesNoEntryInTheRegistry
+	"A call that is registered removes its own entry when it is done, with the handle it was
+	given: the registry does not grow with the calls that already finished."
+	| registry tool result |
+	registry := MCPServerInFlightRequests new.
+	tool := MCPServerTool
+		on: (MCPServerToolDescriptor forMethod: (MCPServerWorkspaceTools compiledMethodAt: #printIt:)).
+	result := tool executeWith: #('1 + 1') under: 7 in: registry.
+	self assert: result text equals: '2'.
+	self assert: registry isEmpty
+! !
+
+!MCPServerToolTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 23:40:30'!
+test05ACallIsRegisteredWhileItRuns
+	"While the call runs, its id is in the registry, and that is what makes it findable when the
+	client asks to stop it. The call blocks on a semaphore of its own, so the test can look at the
+	registry from the outside; and once it is stopped, the entry is gone."
+	| registry tool call tries |
+	registry := MCPServerInFlightRequests new.
+	tool := MCPServerTool
+		on: (MCPServerToolDescriptor forMethod: (MCPServerWorkspaceTools compiledMethodAt: #printIt:)).
+	call := [ tool executeWith: #('(Semaphore new) wait') under: 7 in: registry ] newProcess.
+	call resume.
+	tries := 0.
+	[ registry isEmpty and: [ tries < 300 ] ] whileTrue: [ (Delay forMilliseconds: 10) wait. tries := tries + 1 ].
+	self assert: registry size equals: 1.
+	self assert: (registry cancel: 7).
+	self assert: registry isEmpty.
+	call terminate
+! !
+
+!MCPServerToolTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 23:40:30'!
+test06TheCallIsRegisteredBeforeTheWorkerCanRun
+	"The registry is asked before the worker is given the CPU. A call that is resumed first could
+	finish and clean itself up before anybody registered it, and then its entry would stay in the
+	registry forever. The spy records what the worker was doing when the registry was asked."
+	| spy tool |
+	spy := MCPServerInFlightRecorder new.
+	tool := MCPServerTool
+		on: (MCPServerToolDescriptor forMethod: (MCPServerWorkspaceTools compiledMethodAt: #printIt:)).
+	tool executeWith: #('1 + 1') under: 7 in: spy.
+	self assert: spy wasSuspendedWhenRegistered.
+	self assert: spy registerCount equals: 1.
+	self assert: spy unregisterCount equals: 1
 ! !
 
 !MCPServerWorkspaceToolsTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 12:31:29'!

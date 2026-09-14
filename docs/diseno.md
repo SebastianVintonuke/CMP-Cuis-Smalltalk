@@ -64,8 +64,13 @@ Object
 │   ├─ MCPCallToolCommand ─────── busca la herramienta, coacciona argumentos, ejecuta
 │   ├─ MCPPingCommand ─────────── liveness
 │   └─ MCPCancelCommand ───────── `notifications/cancelled`: corta el proceso del pedido
-├─ MCPSession ─────────────────── estado por conexión: versión, initialized, clientInfo,
-│                                  y el registro de pedidos en vuelo (id → Process)
+│                                  NO se construyó: un comando con un solo implementador es
+│                                  ceremonia (§7). Vive como rama del protocolo, con el registro
+├─ MCPSession ─────────────────── estado por conexión: versión, initialized, clientInfo
+│                                  (todavía no existe: sin identidad de sesión en el transporte)
+├─ MCPServerInFlightRequests ───── [Registry] los pedidos que corren ahora (id → Process),
+│                                  del servidor y no de la conexión, con su candado adentro:
+│                                  el alta contesta un handle y la baja es por handle
 ├─ MCPToolCatalogue ───────────── inmutable: nombre → herramienta. Read-only ⇒ sin locks
 ├─ MCPCatalogueBuilder ────────── [Builder] lee pragmas de las fachadas y arma el catálogo
 ├─ MCPToolDescriptor ──────────── [Value Object] lo que el pragma declara: nombre, ventana,
@@ -143,9 +148,13 @@ herramienta.
 error de protocolo) → coercion de argumentos según el descriptor → `MCPTool` ejecuta
 el `MethodReference` → `MCPResult` → renderer con política de límites.
 
-**Cancelación.** `notifications/cancelled` → `MCPCancelCommand` → la sesión sabe
-qué `Process` atiende ese id (registro de pedidos en vuelo) → `terminate`. Es el
-reemplazo decidido del vigilante: el pedido lo corta quien lo pidió.
+**Cancelación.** `notifications/cancelled` → el protocolo (una rama, antes del corte por
+falta de id) → el registro de pedidos en vuelo del servidor sabe qué `Process` atiende ese id →
+`terminate`. Si el id no está, o si pertenece a más de una llamada, no se corta nada: la
+notificación no contesta, y una cancelación que no puede ser exacta no se vuelve un corte
+cualquiera. El timeout queda del lado del cliente. Es el reemplazo decidido del vigilante: el
+pedido lo corta quien lo pidió. El borde del adaptador cierra el otro extremo: el pedido
+cancelado no lleva respuesta, y eso sale como `202` sin cuerpo.
 
 **Ver en pantalla.** Si el humano pide ver, `MCPWindowProjection` instancia la
 herramienta real de Cuis (`MethodSet`, `Browser`, `Debugger`) y la abre. El estado
@@ -189,11 +198,23 @@ cancelación se prueban con procesos de mentira.
 ## 9. Estado y concurrencia
 
 - **Inmutable**: catálogo, descriptores, valores. Sin locks.
-- **Por conexión**: `MCPSession` (versión, initialized, pedidos en vuelo). Una
-  sesión no ve a las otras.
+- **Por servidor**: el registro de pedidos en vuelo (el plan decía por conexión, en la
+  sesión; se movió al servidor porque todavía no hay identidad de sesión y la cancelación
+  llega en otra conexión). Es el único estado mutable compartido del paquete, así que el
+  candado vive **adentro** de la clase que lo tiene, la sección crítica cubre el invariante
+  del registro y no la acción de terminar un proceso, y nada más del paquete gana estado.
+  Cuando las sesiones existan, el alcance se vuelve exacto y el registro se muda con ellas.
 - **Del entorno**: la imagen. Ahí no hay transacciones: la escritura del agente puede
   pisar lo que el humano tenía abierto. Es un problema conocido y **descartado a
-  propósito** por alcance (ver README, Problemas 3).
+  propósito** por alcance (ver README, Problemas 3). Y cancelar no revierte la escritura:
+  lo que ya se compiló, quedó compilado.
+- **Convención de recursos**: quien abre un recurso lo cierra en un `ensure:`, porque una
+  llamada puede ser terminada. No es una mecánica nuestra: es la regla de la imagen (su
+  `FileEntry>>writeStreamDo:`, por ejemplo, ya la sigue). Lo que sí es nuestro es el
+  contrato del trabajador: su `ensure:` corre aunque lo terminen, y ahí está todo lo que la
+  herramienta promete limpiar. Lo que no promete: que una sentencia posterior de ese mismo
+  `ensure:` corra si la primera falla, ni que la limpieza sea barata si la escribe alguien
+  que no la mira.
 - **Un proceso por pedido**: lo aporta el `WebServer`. Sobre eso, la ejecución de
   cada herramienta corre en un **proceso trabajador propio con prioridad menor que
   la UI** (decidido): el handler espera su resultado. Así el humano nunca pierde el

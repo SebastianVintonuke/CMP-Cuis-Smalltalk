@@ -7,7 +7,7 @@ SystemOrganization addCategory: #MCPServer!
 
 !classDefinition: #MCPServer category: #MCPServer!
 Object subclass: #MCPServer
-	instanceVariableNames: 'port catalogue webServer'
+	instanceVariableNames: 'port catalogue webServer inFlight'
 	classVariableNames: ''
 	poolDictionaries: ''
 	category: 'MCPServer'!
@@ -45,6 +45,16 @@ Object subclass: #MCPServerEnvironment
 MCPServerEnvironment class
 	instanceVariableNames: ''!
 
+!classDefinition: #MCPServerInFlightRequests category: #MCPServer!
+Object subclass: #MCPServerInFlightRequests
+	instanceVariableNames: 'calls guard'
+	classVariableNames: ''
+	poolDictionaries: ''
+	category: 'MCPServer'!
+!classDefinition: 'MCPServerInFlightRequests class' category: #MCPServer!
+MCPServerInFlightRequests class
+	instanceVariableNames: ''!
+
 !classDefinition: #MCPServerMethodComment category: #MCPServer!
 Object subclass: #MCPServerMethodComment
 	instanceVariableNames: ''
@@ -57,7 +67,7 @@ MCPServerMethodComment class
 
 !classDefinition: #MCPServerProtocol category: #MCPServer!
 Object subclass: #MCPServerProtocol
-	instanceVariableNames: 'catalogue'
+	instanceVariableNames: 'catalogue inFlight'
 	classVariableNames: ''
 	poolDictionaries: ''
 	category: 'MCPServer'!
@@ -144,6 +154,9 @@ implementation are the same method, so they cannot drift.!
 !MCPServerEnvironment commentStamp: '<historical>' prior: 0!
 I am the access to the image that every facade shares: I answer classes by the name the Browser class pane shows (the class side says Foo class), and I am where the rest of the image access will live. Nothing of mine is state: what I read is the image.!
 
+!MCPServerInFlightRequests commentStamp: '<historical>' prior: 0!
+I am the calls that are running right now, so that a client can stop one of them. I keep each call under the id of the request whose worker is running it, and I answer a handle when a call is registered: the call gives that handle back when it is done, so it removes its own entry and never the entry of another call that happens to use the same id. My state is mutable and shared by every connection, so every look at it goes through my lock; and stopping a call happens outside the lock, because the call being stopped unregisters itself on its way out.!
+
 !MCPServerMethodComment commentStamp: '<historical>' prior: 0!
 I read the comment of a method from its source. In Smalltalk the comment
 is the first string after the message pattern, so I skip the pattern and take it.
@@ -200,9 +213,6 @@ isListening
 !MCPServer methodsFor: 'accessing' stamp: 'S.V. 13/Sep/2026 15:47:46'!
 port ^port! !
 
-!MCPServer methodsFor: 'accessing' stamp: 'S.V. 13/Sep/2026 15:47:46'!
-protocol ^ MCPServerProtocol on: catalogue! !
-
 !MCPServer methodsFor: 'starting' stamp: 'S.V. 13/Sep/2026 20:46:42'!
 start
 	"Listen on the given port, loopback only, and serve the MCP endpoint. Starting a server
@@ -223,14 +233,26 @@ destroy
 	webServer := nil.
 	^ self! !
 
-!MCPServer methodsFor: 'handling' stamp: 'S.V. 13/Sep/2026 12:33:39'!
+!MCPServer methodsFor: 'handling' stamp: 'S.V. 13/Sep/2026 23:41:58'!
+answerNoContentTo: aWebRequest
+	"Private. Accepted, with nothing to say: the transport has a code for exactly this."
+	aWebRequest
+		sendResponse: (aWebRequest newResponse protocol: 'HTTP/1.1' code: 202)
+		content: ''
+! !
+
+!MCPServer methodsFor: 'handling' stamp: 'S.V. 13/Sep/2026 23:41:58'!
 handleRequest: aWebRequest
+	"Answer the request with the body of the response when there is one to send, and with 202 and no
+	body when there is nothing to answer: that is the case of a notification, and of a request that
+	was cancelled. 202 is what the transport asks for: the message was accepted, and no answer follows."
 	| body |
 	body := self handleRequestBody: aWebRequest content.
 	body isNil
-		ifTrue: [ aWebRequest send200Response: '' ]
+		ifTrue: [ self answerNoContentTo: aWebRequest ]
 		ifFalse: [ aWebRequest send200Response: body contentType: 'application/json' ].
-	^ self! !
+	^ self
+! !
 
 !MCPServer methodsFor: 'handling' stamp: 'S.V. 13/Sep/2026 21:23:32'!
 handleRequestBody: aString
@@ -241,6 +263,25 @@ handleRequestBody: aString
 	response := self protocol handleMessage: (Json readFrom: (self textFromWire: aString) readStream).
 	response ifNil: [ ^ nil ].
 	^ self wireStringFor: (Json render: response)
+! !
+
+!MCPServer methodsFor: 'handling' stamp: 'S.V. 13/Sep/2026 23:41:31'!
+inFlight
+	"Answer the registry of the calls running in this server: what a cancellation looks into."
+	^ inFlight
+! !
+
+!MCPServer methodsFor: 'handling' stamp: 'S.V. 13/Sep/2026 23:41:31'!
+protocol
+	"Private. The protocol of this server, keeping the calls of this server in flight: a
+	cancellation that arrives in one request has to find the call that another request started."
+	^ MCPServerProtocol on: catalogue inFlight: inFlight
+! !
+
+!MCPServer methodsFor: 'handling' stamp: 'S.V. 13/Sep/2026 23:41:31'!
+setInFlight: aRegistry
+	"Private. Instances are created with the class-side factory."
+	inFlight := aRegistry
 ! !
 
 !MCPServer methodsFor: 'private' stamp: 'S.V. 13/Sep/2026 20:46:43'!
@@ -317,12 +358,15 @@ test10EncodesTheResponseAsUtf8
 	self assert: (decoded findString: accent) > 0
 ! !
 
-!MCPServer class methodsFor: 'instance creation' stamp: 'S.V. 13/Sep/2026 12:33:13'!
+!MCPServer class methodsFor: 'instance creation' stamp: 'S.V. 13/Sep/2026 23:41:31'!
 on: aPort tools: aCollectionOfClasses
 	"Answer a server that exposes the tools declared by those classes on that port."
-	^ self new
+	| server |
+	server := self new
 		setPort: aPort
-		catalogue: (MCPServerCatalogueBuilder buildFrom: aCollectionOfClasses)! !
+		catalogue: (MCPServerCatalogueBuilder buildFrom: aCollectionOfClasses).
+	^ server setInFlight: MCPServerInFlightRequests new
+! !
 
 !MCPServerBrowserTools methodsFor: 'accessing' stamp: 'S.V. 13/Sep/2026 20:55:32'!
 allCallsOn: aSelectorString
@@ -614,6 +658,71 @@ classNamed: aString
 	theClass ifNil: [ Error signal: 'No class named ', theName printString ].
 	^ theClass! !
 
+!MCPServerInFlightRequests methodsFor: 'calls' stamp: 'S.V. 13/Sep/2026 23:40:03'!
+cancel: anId
+	"Answer whether a call was stopped. A call that is not registered is not stopped, and neither is
+	an id that belongs to more than one call at once: two clients can pick the same id, and stopping
+	a call that nobody asked to stop is worse than stopping nothing. The entry is removed here and
+	not left to the unwinding, because a call that is stopped before it ever runs would never run
+	its own cleanup. The process is stopped outside the lock: stopping it runs the unwinding, and
+	the call being stopped unregisters itself on the way out, which would ask for the lock again."
+	| process |
+	process := guard critical: [
+		| registry |
+		registry := calls at: anId ifAbsent: [ nil ].
+		(registry notNil and: [ registry size = 1 ])
+			ifTrue: [ calls removeKey: anId ifAbsent: [ nil ]. registry first ]
+			ifFalse: [ nil ] ].
+	process isNil ifTrue: [ ^ false ].
+	process terminate.
+	^ true
+! !
+
+!MCPServerInFlightRequests methodsFor: 'calls' stamp: 'S.V. 13/Sep/2026 23:40:03'!
+initialize
+	"Private. The registry is born empty, with the lock that every look at it goes through."
+	calls := Dictionary new.
+	guard := Semaphore forMutualExclusion
+! !
+
+!MCPServerInFlightRequests methodsFor: 'calls' stamp: 'S.V. 13/Sep/2026 23:40:03'!
+isEmpty
+	"Answer whether there is no call running right now."
+	^ guard critical: [ calls isEmpty ]
+! !
+
+!MCPServerInFlightRequests methodsFor: 'calls' stamp: 'S.V. 13/Sep/2026 23:40:03'!
+register: anId process: aProcess
+	"Answer the handle of this call: the id it is running under and the process doing it. The call
+	gives the handle back when it is done, so a call removes its own entry and never the entry of
+	another call that happens to use the same id."
+	| registry |
+	guard critical: [
+		registry := calls at: anId ifAbsent: [ nil ].
+		registry isNil ifTrue: [ registry := OrderedCollection new. calls at: anId put: registry ].
+		registry add: aProcess ].
+	^ anId -> aProcess
+! !
+
+!MCPServerInFlightRequests methodsFor: 'calls' stamp: 'S.V. 13/Sep/2026 23:40:03'!
+size
+	"Answer how many calls are registered, counting calls and not ids: two calls can share an id."
+	^ guard critical: [ calls values inject: 0 into: [ :total :each | total + each size ] ]
+! !
+
+!MCPServerInFlightRequests methodsFor: 'calls' stamp: 'S.V. 13/Sep/2026 23:40:03'!
+unregister: aHandle
+	"Remove the entry of the call that holds this handle and no other. A handle that is not there
+	anymore is not an error: a call that was stopped does not get to unregister twice."
+	guard critical: [
+		| registry |
+		registry := calls at: aHandle key ifAbsent: [ nil ].
+		registry isNil ifFalse: [
+			registry remove: aHandle value ifAbsent: [ nil ].
+			registry isEmpty ifTrue: [ calls removeKey: aHandle key ifAbsent: [ nil ] ] ] ].
+	^ self
+! !
+
 !MCPServerMethodComment class methodsFor: 'reading' stamp: 'S.V. 13/Sep/2026 12:11:12'!
 fromSource: aSourceString
 	"Answer the comment of the method whose source is aSourceString, or nil if it has
@@ -662,11 +771,27 @@ isQuote: aCharacter ^ aCharacter = $"! !
 !MCPServerProtocol methodsFor: 'accessing' stamp: 'S.V. 13/Sep/2026 12:32:32'!
 catalogue ^catalogue! !
 
-!MCPServerProtocol methodsFor: 'handling' stamp: 'S.V. 13/Sep/2026 12:32:32'!
+!MCPServerProtocol methodsFor: 'handling' stamp: 'S.V. 13/Sep/2026 23:41:31'!
+cancelRequestedBy: aMessage
+	"The client asks that a request it issued be stopped. It is a notification, so it never gets an
+	answer, and a malformed one is ignored: that is what keeps notifications fire and forget. The
+	reason is written to the transcript, for whoever is reading the image."
+	| params requestId reason |
+	params := aMessage at: 'params' ifAbsent: [ Dictionary new ].
+	requestId := params at: 'requestId' ifAbsent: [ nil ].
+	reason := params at: 'reason' ifAbsent: [ '' ].
+	(inFlight cancel: requestId)
+		ifTrue: [ self noteCancelledRequest: requestId reason: reason ].
+	^ nil
+! !
+
+!MCPServerProtocol methodsFor: 'handling' stamp: 'S.V. 13/Sep/2026 23:41:31'!
 handleMessage: aMessage
-	"Answer the response for the message, or nil if it is a notification (no id)."
+	"Answer the response for the message, or nil if it is a notification (no id). A cancellation is
+	a notification like any other: it is acted upon, and it answers nothing."
 	| method id |
 	method := aMessage at: 'method' ifAbsent: [ nil ].
+	(method = 'notifications/cancelled') ifTrue: [ ^ self cancelRequestedBy: aMessage ].
 	id := aMessage at: 'id' ifAbsent: [ nil ].
 	id isNil ifTrue: [ ^ nil ].
 	(method = 'initialize')
@@ -677,17 +802,45 @@ handleMessage: aMessage
 		ifTrue: [ ^ self toolsCallResponseFor: id params: (aMessage at: 'params' ifAbsent: [ Dictionary new ]) ].
 	(method = 'ping')
 		ifTrue: [ ^ self resultResponseFor: id result: Dictionary new ].
-	^ self errorResponseFor: id code: -32601 message: 'Method not found: ', method printString! !
+	^ self errorResponseFor: id code: -32601 message: 'Method not found: ', method printString
+! !
 
-!MCPServerProtocol methodsFor: 'handling' stamp: 'S.V. 13/Sep/2026 12:32:32'!
+!MCPServerProtocol methodsFor: 'handling' stamp: 'S.V. 13/Sep/2026 23:41:31'!
+noteCancelledRequest: aRequestId reason: aString
+	"The protocol says a cancellation should be logged, and the reason is what the client wanted:
+	write it where whoever is using the image can read it."
+	Transcript show: 'MCP: request ', aRequestId printString, ' was cancelled: ', aString; newLine
+! !
+
+!MCPServerProtocol methodsFor: 'handling' stamp: 'S.V. 13/Sep/2026 23:41:31'!
+on: aCatalogue
+	"Answer a protocol that knows those tools, with a registry of calls in flight of its own."
+	^ self on: aCatalogue inFlight: MCPServerInFlightRequests new
+! !
+
+!MCPServerProtocol methodsFor: 'handling' stamp: 'S.V. 13/Sep/2026 23:41:31'!
+on: aCatalogue inFlight: aRegistry
+	"Answer a protocol that knows those tools and keeps its calls in flight in that registry."
+	^ self new setCatalogue: aCatalogue; setInFlight: aRegistry; yourself
+! !
+
+!MCPServerProtocol methodsFor: 'handling' stamp: 'S.V. 13/Sep/2026 23:41:31'!
+setInFlight: aRegistry
+	"Private. Instances are created with the class-side factory."
+	inFlight := aRegistry
+! !
+
+!MCPServerProtocol methodsFor: 'handling' stamp: 'S.V. 13/Sep/2026 23:41:58'!
 toolsCallResponseFor: anId params: aParams
-	| tool |
+	| tool result |
 	tool := catalogue toolNamed: (aParams at: 'name' ifAbsent: [ '' ]) asSymbol.
 	tool ifNil: [
 		^ self errorResponseFor: anId code: -32602
 			message: 'Unknown tool: ', (aParams at: 'name' ifAbsent: [ '' ]) ].
-	^ self resultResponseFor: anId
-		result: (self contentOf: (tool executeWith: (self valuesFor: tool from: aParams)))! !
+	result := tool executeWith: (self valuesFor: tool from: aParams) under: anId in: inFlight.
+	result isNil ifTrue: [ ^ nil ].
+	^ self resultResponseFor: anId result: (self contentOf: result)
+! !
 
 !MCPServerProtocol methodsFor: 'handling' stamp: 'S.V. 13/Sep/2026 12:32:32'!
 valuesFor: aTool from: aParams
@@ -797,8 +950,17 @@ setCatalogue: aCatalogue
 	"Private. Instances are created with the class-side factory."
 	catalogue := aCatalogue! !
 
-!MCPServerProtocol class methodsFor: 'instance creation' stamp: 'S.V. 13/Sep/2026 12:32:32'!
-on: aCatalogue ^ self new setCatalogue: aCatalogue! !
+!MCPServerProtocol class methodsFor: 'instance creation' stamp: 'S.V. 13/Sep/2026 23:41:31'!
+on: aCatalogue
+	"Answer a protocol that knows those tools, with a registry of calls in flight of its own."
+	^ self on: aCatalogue inFlight: MCPServerInFlightRequests new
+! !
+
+!MCPServerProtocol class methodsFor: 'instance creation' stamp: 'S.V. 13/Sep/2026 23:41:31'!
+on: aCatalogue inFlight: aRegistry
+	"Answer a protocol that knows those tools and keeps its calls in flight in that registry."
+	^ self new setCatalogue: aCatalogue; setInFlight: aRegistry; yourself
+! !
 
 !MCPServerTestingTools methodsFor: 'running' stamp: 'S.V. 13/Sep/2026 18:58:42'!
 runTestsInCategory: aCategoryName
@@ -856,16 +1018,29 @@ testClassNamed: aString
 !MCPServerTool methodsFor: 'accessing' stamp: 'S.V. 13/Sep/2026 12:11:45'!
 descriptor ^descriptor! !
 
-!MCPServerTool methodsFor: 'running' stamp: 'S.V. 13/Sep/2026 22:34:04'!
+!MCPServerTool methodsFor: 'running' stamp: 'S.V. 13/Sep/2026 23:40:36'!
 executeWith: anArrayOfValues
+	"Answer the result of running this tool outside any request: there is no call to register and
+	nothing to stop, so there is no registry."
+	^ self executeWith: anArrayOfValues under: nil in: nil
+! !
+
+!MCPServerTool methodsFor: 'running' stamp: 'S.V. 13/Sep/2026 23:40:36'!
+executeWith: anArrayOfValues under: anId in: aRegistry
 	"Answer the MCPServerToolResult of running this tool with the given values, in a worker of its
 	own with a priority below the one of the human's UI: the work of the agent never takes the CPU
 	away from whoever is using the image, and that worker is the one a cancellation would stop. The
 	caller waits for the result, so the request still gets its answer. Only this worker: the
 	priorities of the image, and of whatever else listens on a port, are not touched. A failing
 	expression answers an error result instead of letting the exception escape: the tool is the
-	boundary between the image and the protocol."
-	| worker done result |
+	boundary between the image and the protocol.
+	When there is a registry, the call is registered before the worker is resumed: a worker that is
+	resumed first can finish and clean itself up before anybody registered it, and then its entry
+	would stay in the registry forever. And the entry is removed with the handle the call was
+	given, so a call removes its own entry and never the entry of another call that happens to use
+	the same id. A tool can also be run outside a request, with no registry: then there is nothing
+	to stop."
+	| worker handle done result |
 	done := Semaphore new.
 	result := nil.
 	worker := [
@@ -879,10 +1054,13 @@ executeWith: anArrayOfValues
 				isError: false ]
 			on: Error
 			do: [ :e | MCPServerToolResult text: e class name, ': ', e messageText isError: true ] ]
-			ensure: [ done signal ] ]
+			ensure: [
+				aRegistry isNil ifFalse: [ aRegistry unregister: handle ].
+				done signal ] ]
 		newProcess.
 	worker priority: self workerPriority.
 	worker name: 'MCPServer worker'.
+	aRegistry isNil ifFalse: [ handle := aRegistry register: anId process: worker ].
 	worker resume.
 	done wait.
 	^ result

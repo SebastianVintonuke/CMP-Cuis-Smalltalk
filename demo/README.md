@@ -33,6 +33,21 @@ documentación, en español).
 Los pedidos al MCP los hace el panel (Python), no el navegador: no hay problema de
 CORS ni de transporte.
 
+## La llamada de prueba
+
+`demo/cancel-demo.st` es el código para pegar en el campo `code` de `print_it`: da veinte vueltas
+tomando la máquina un segundo y soltándola dos, y va escribiendo cada vuelta en el Transcript.
+
+Sirve para ver las dos cosas de una. Mientras corre, la imagen se siente trabada —la llamada se
+pone **por encima de la UI a propósito**, con una línea que se puede sacar, y así hay algo que
+cancelar—. Y con **Cancel** vuelve todo a la normalidad: el Transcript deja de crecer en el acto,
+porque el trabajador murió.
+
+Para que una cancelación **entre**, el trabajador tiene que soltar el CPU en algún momento: por eso
+la llamada duerme entre vuelta y vuelta. Una que no duerme nunca no se puede cancelar ni matando el
+proceso desde afuera, y eso está contado como "lo que no se puede salvar" en el Problema 1 del
+README.
+
 ## Cómo se levanta el servidor
 
 El panel no levanta ni apaga nada: el servidor es parte de la imagen y se arranca desde

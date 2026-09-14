@@ -300,6 +300,9 @@ sesiones MCP (`Mcp-Session-Id`) el alcance se vuelve exacto; hasta entonces, esa
 - **La interrupción es `terminate`**, la del propio Cuis: termina el proceso y corre sus
 `ensure:` antes de volver (verificado en la imagen). Cancelar no es rebobinar: lo que ya se
 compiló, quedó compilado.
+- **Un servidor que ya estaba vivo** cuando apareció el registro no tiene ninguno, y una
+cancelación se le **ignora** (contesta `202`): no registró llamadas propias, así que no hay nada
+suyo que cortar. Para que las registre hay que rearmarlo, que es decisión del dueño de la imagen.
 
 **De los tres bordes del adaptador**, el `202` ya está (verificado con un POST real contra el
 servidor): queda el `405` en el GET y la validación de `Origin`.

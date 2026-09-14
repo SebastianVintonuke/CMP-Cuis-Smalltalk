@@ -458,6 +458,10 @@ La otra mitad del problema 1: el trabajador ya tenía prioridad baja, y ahora ti
 Los dos últimos se escribieron después de la implementación, y quedan anotados así: el `202` y el
 e2e son guardas de lo que ya estaba, no ciclos rojo-verde.
 
+Y al probarlo contra el servidor que estaba vivo apareció un caso más, con su test (el 13): un
+servidor que ya existía cuando el registro apareció no tiene ninguno, y una cancelación se le
+**ignora** en vez de contestarle un error. Con eso, **70 tests en verde**.
+
 ### Lo que se aprendió, y casi todo fue del instrumento
 
 - **Medir con un instrumento sin probarlo es medir cualquier cosa.** Mi primer experimento dijo que
@@ -477,8 +481,19 @@ e2e son guardas de lo que ya estaba, no ciclos rojo-verde.
   pila que tiene, y si el `ensure:` todavía no se envió, no hay nada que desenrollar. Consecuencia
   de diseño: `cancel:` saca la entrada del registro él mismo, en vez de dejar esa tarea al
   trabajador. Salió de razonar el caso, y quedó fijado por el test 07.
+- **Una variable de instancia tapa al método del mismo nombre.** Quise que el registro naciera la
+  primera vez que se lo pidiera (un lector perezoso `inFlight`), y no funcionó: dentro de
+  `protocol`, `inFlight` se compila como **acceso a la variable**, no como envío de mensaje, así que
+  el lector nunca corría y el protocolo recibía `nil`. El arreglo terminó donde correspondía: el
+  protocolo **ignora** la cancelación cuando no hay registro que mirar, que es lo que la spec dice
+  de una cancelación que no se puede atender. Y el servidor que estaba vivo en ese momento dejó de
+  contestar `500` y contesta `202`, sin rearmarlo.
 - **`pkill -f <patrón>` mató mi propia shell**, porque el patrón coincidía con mi línea de comando.
   Si hay que matar por patrón, se lo encierra: `[m]cp-correr`.
+- Y la de siempre, otra vez: el test que corre la categoría que lo contiene, el número que envejece
+  adentro de una aserción, el cuerpo del test que va a un archivo, y —esta vez de nuevo— el test que
+  se **renombra** y no se borra: el 13 quedó duplicado y el viejo fallaba por afirmar lo que ya no
+  era cierto.
 
 ## File out
 

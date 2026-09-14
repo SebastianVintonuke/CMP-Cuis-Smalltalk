@@ -856,26 +856,50 @@ testClassNamed: aString
 !MCPServerTool methodsFor: 'accessing' stamp: 'S.V. 13/Sep/2026 12:11:45'!
 descriptor ^descriptor! !
 
-!MCPServerTool methodsFor: 'running' stamp: 'S.V. 13/Sep/2026 20:15:59'!
+!MCPServerTool methodsFor: 'running' stamp: 'S.V. 13/Sep/2026 22:34:04'!
 executeWith: anArrayOfValues
-	"Answer the MCPServerToolResult of running this tool with the given values. A failing
-	expression answers an error result instead of letting the exception escape: the tool is
-	the boundary between the image and the protocol."
-	^ [ | method receiver |
-		method := descriptor methodReference.
-		receiver := method classIsMeta
-			ifTrue: [ method actualClass ]
-			ifFalse: [ method actualClass new ].
-		MCPServerToolResult
-			text: (receiver perform: method selector withArguments: anArrayOfValues)
-			isError: false ]
-		on: Error
-		do: [ :e | MCPServerToolResult text: e class name, ': ', e messageText isError: true ]! !
+	"Answer the MCPServerToolResult of running this tool with the given values, in a worker of its
+	own with a priority below the one of the human's UI: the work of the agent never takes the CPU
+	away from whoever is using the image, and that worker is the one a cancellation would stop. The
+	caller waits for the result, so the request still gets its answer. Only this worker: the
+	priorities of the image, and of whatever else listens on a port, are not touched. A failing
+	expression answers an error result instead of letting the exception escape: the tool is the
+	boundary between the image and the protocol."
+	| worker done result |
+	done := Semaphore new.
+	result := nil.
+	worker := [
+		[ result := [ | method receiver |
+			method := descriptor methodReference.
+			receiver := method classIsMeta
+				ifTrue: [ method actualClass ]
+				ifFalse: [ method actualClass new ].
+			MCPServerToolResult
+				text: (receiver perform: method selector withArguments: anArrayOfValues)
+				isError: false ]
+			on: Error
+			do: [ :e | MCPServerToolResult text: e class name, ': ', e messageText isError: true ] ]
+			ensure: [ done signal ] ]
+		newProcess.
+	worker priority: self workerPriority.
+	worker name: 'MCPServer worker'.
+	worker resume.
+	done wait.
+	^ result
+! !
 
 !MCPServerTool methodsFor: 'private' stamp: 'S.V. 13/Sep/2026 12:11:45'!
 setDescriptor: aDescriptor
 	"Private. Instances are created with the class-side factory."
 	descriptor := aDescriptor! !
+
+!MCPServerTool methodsFor: 'private' stamp: 'S.V. 13/Sep/2026 22:33:14'!
+workerPriority
+	"Private. Where the work of the agent runs: below the priority of the human's UI, so the interface
+	always wins the CPU. Relative on purpose: if Cuis changes its own priority, this stays below it
+	without touching anything else."
+	^ Processor userInterruptPriority - 10
+! !
 
 !MCPServerTool class methodsFor: 'instance creation' stamp: 'S.V. 13/Sep/2026 12:11:45'!
 on: aDescriptor

@@ -416,6 +416,33 @@ Qué dice el texto, y qué no:
 
 Ver la decisión 5 del README, con su evaluación y su resolución.
 
+## El trabajo del agente, por debajo de la UI (ciclo 37)
+
+| # | Test | Rojo | Verde | Qué se implementó |
+| --- | --- | --- | --- | --- |
+| 37 | una herramienta corre a una prioridad menor que la de la UI | la herramienta contestaba 60, la del handler | 53/53 | `MCPServerTool>>executeWith:` lanza un trabajador propio (`workerPriority`: `userInterruptPriority - 10`) y espera su resultado con un semáforo |
+
+Sólo el trabajador: el handler del `WebServer` y todo lo demás quedan con las prioridades de Cuis,
+porque en la imagen puede haber otro servidor que no es nuestro. Y ese trabajador es el destinatario
+de la cancelación que falta.
+
+### Lo que se aprendió a golpes, en este mismo ciclo
+
+- **`[ ... ] ensure: [ ... ]` no arma el cuerpo de un proceso: evalúa el bloque y contesta su valor.**
+  Lo escribí creyendo que sí, así que el bloque corrió en el handler y después le mandé `priority:`
+  al resultado. Para envolver el cuerpo de un proceso van **dos bloques anidados**: el de afuera es
+  el del proceso, y el `ensure:` va en el de adentro.
+- **Un script se compila entero antes de correr**: un error de sintaxis en cualquier parte hace que
+  no corra nada, y el pedido contesta `nil` sin decir por qué.
+- **El cuerpo de una herramienta corre antes de que falle su resultado**: mientras `executeWith:`
+  estaba roto, escribir un archivo desde `print_it` seguía funcionando, y eso fue la puerta para
+  repararlo sin ayuda de nadie.
+- **No adivinar el estado de un proceso**: creí que `suspendedContext isNil` significaba "muerto" y
+  terminé matando el trabajador de mi propio pedido. Un proceso que está corriendo también puede
+  tener el contexto en nil.
+- Y la de siempre, otra vez: **un test con un número adentro envejece**. El del Test Runner esperaba
+  "2 tests" de `MCPServerToolTest` y ahora son tres, así que el número pasó a salir de la clase.
+
 ## File out
 
 Quedaron `src/MCPServer.pck.st` (10 clases de producción) y

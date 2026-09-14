@@ -602,15 +602,18 @@ test10EncodesTheResponseAsUtf8
 	self assert: (decoded findString: accent) > 0
 ! !
 
-!MCPServerTestingToolsTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 18:58:42'!
+!MCPServerTestingToolsTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 22:35:59'!
 test01RunsTheTestsOfATestClass
-	"The Test Runner over one class: the counts, and the defects if there are any."
-	| text |
+	"The Test Runner over one class: the counts, and the defects if there are any. The expected
+	number comes from the class itself, so adding a test to that class does not make this one lie."
+	| text expected |
+	expected := MCPServerToolTest selectors count: [ :each | each asString beginsWith: 'test' ].
 	text := MCPServerTestingTools new runTestsInClass: 'MCPServerToolTest'.
-	self assert: (text findString: '2 tests') > 0.
-	self assert: (text findString: '2 passed') > 0.
+	self assert: (text findString: expected printString, ' tests') > 0.
+	self assert: (text findString: expected printString, ' passed') > 0.
 	self assert: (text findString: '0 failures') > 0.
-	self assert: (text findString: '0 errors') > 0! !
+	self assert: (text findString: '0 errors') > 0
+! !
 
 !MCPServerTestingToolsTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 18:58:42'!
 test02TakesEveryTestClassOfTheCategory
@@ -684,6 +687,19 @@ test02AFailingExecutionAnswersAnErrorResult
 				executeWith: #('1 zork').
 	self assert: result isError equals: true.
 	self assert: (result text findString: 'MessageNotUnderstood') > 0! !
+
+!MCPServerToolTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 22:32:51'!
+test03RunsBelowTheUIsPriority
+	"The work of a tool runs in its own worker, below the priority of the human's UI: an agent never
+	takes the CPU away from whoever is using the image. The tool asks itself what priority it is
+	running at, and that number is what the test checks, so it is the real one."
+	| tool result |
+	tool := MCPServerTool
+		on: (MCPServerToolDescriptor
+			forMethod: (MCPServerWorkspaceTools compiledMethodAt: #printIt:)).
+	result := tool executeWith: #('Processor activeProcess priority').
+	self assert: result text asNumber < Processor userInterruptPriority
+! !
 
 !MCPServerWorkspaceToolsTest methodsFor: 'testing' stamp: 'S.V. 13/Sep/2026 12:31:29'!
 test01PrintItEvaluatesAndAnswersThePrintedResult

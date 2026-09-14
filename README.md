@@ -259,14 +259,17 @@ todos los handlers de pedidos corren en prioridad 60 y la UI en 50, un pedido
 con cálculo pesado bloquea todo: los demás pedidos y la interfaz del humano. No
 es un servidor "mal hecho": es que no hay paralelismo real.
 
-**Decidido (sin implementar):**
+**Decidido e implementado (13/09/2026):**
 
 1. Correr el trabajo del agente **por debajo de la UI**. La UI corre en
    `Processor userInterruptPriority` (50) y el handler del `WebServer` en 60, así
    que la ejecución de una herramienta se hace en un **proceso trabajador** propio,
-   con prioridad menor (por ejemplo 40), y el handler espera su resultado. Doble
-   ventaja: la interfaz del humano siempre gana el CPU, y la cancelación tiene a
-   quién cortar (se termina el trabajador, no el handler).
+   con prioridad menor (`Processor userInterruptPriority - 10`), y el handler espera
+   su resultado con un semáforo. Doble ventaja: la interfaz del humano siempre gana el
+   CPU, y la cancelación ya tiene a quién cortar (se termina el trabajador, no el
+   handler). **Verificado**: una herramienta pregunta su propia prioridad y contesta 40,
+   con la UI en 50. Sólo ese trabajador: las prioridades de la imagen, y de cualquier
+   otro servidor que escuche en un puerto, no se tocan.
 
 **Descartado:** el **vigilante con timeout** como policía del servidor. Se
 descartó a propósito: el humano puede congelar la imagen igual que el agente, así

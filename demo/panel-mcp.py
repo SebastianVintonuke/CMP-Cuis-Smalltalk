@@ -17,6 +17,7 @@ Usage:
     python3 demo/panel-mcp.py --port 8790 --panel 8899
 """
 import argparse
+import html
 import json
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -54,6 +55,8 @@ PAGE = """<!doctype html>
         background: #8881; border-radius: 5px; font-size: 13px; max-height: 320px; overflow: auto; }
   .ok { border-left: 3px solid #2e7d32; }
   .err { border-left: 3px solid #c62828; }
+  .note { border-left: 3px solid #8886; padding: 2px 0 2px 12px; margin-bottom: 18px; opacity: .85; }
+  .note-label { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; opacity: .6; margin-bottom: 4px; }
   .bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
   .bar label.inline { margin: 0; display: flex; gap: 6px; align-items: center; font-size: 13px; opacity: .8; }
   .bar label.inline input { width: auto; }
@@ -62,6 +65,7 @@ PAGE = """<!doctype html>
 <body>
 <h1>MCP panel</h1>
 <div class="sub" id="sub">connecting to __PORT__...</div>
+__NOTE__
 <div class="bar">
   <button class="ghost" onclick="load()">Reload tools</button>
   <label class="inline"><input type="checkbox" id="raw"> show raw JSON</label>
@@ -175,8 +179,23 @@ load();
 """
 
 
+def instructions():
+    """The message the server gives a client when it connects, or empty if it cannot be read."""
+    try:
+        response = rpc("initialize", {"protocolVersion": "2025-06-18", "capabilities": {},
+                                      "clientInfo": {"name": "panel", "version": "1"}})
+        return ((response or {}).get("result") or {}).get("instructions", "")
+    except Exception:  # noqa: BLE001 - the panel still serves without it
+        return ""
+
+
 def page():
-    return PAGE.replace("__PORT__", str(MCP_PORT))
+    block = ""
+    note = instructions()
+    if note:
+        block = ('<div class="note"><div class="note-label">What the server tells an agent that connects'
+                 '</div>' + html.escape(note) + '</div>')
+    return PAGE.replace("__PORT__", str(MCP_PORT)).replace("__NOTE__", block)
 
 
 def rpc(method, params=None):

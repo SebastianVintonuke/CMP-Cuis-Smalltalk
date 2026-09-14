@@ -123,6 +123,15 @@ headless aparte.
    Lo que sí sigue valiendo, y es de donde venía la decisión, es lo otro: con `print_it` se
    puede todo, así que **las herramientas no son un sandbox**. La defensa no está en lo que las
    herramientas permiten, sino en quién puede llegar al servidor.
+
+   **Por qué no se agrega ninguna advertencia (idea de Sebastian).** Si un programador fuera lo
+   suficientemente hábil y confiado como para programar todo desde el Workspace, lo haría:
+   saltaría la interfaz visual y no perdería nada, porque es exactamente lo que la ventana le
+   permite. Establecer esa limitación del lado de las herramientas sería decirle al agente "no
+   hagas lo que el humano sí puede hacer", y eso no tiene sentido. Que no haya advertencia no
+   nos quita responsabilidad: la nuestra es ofrecer este conjunto de herramientas masticadas, del
+   mismo modo en que los que diseñaron Smalltalk nos dieron el Browser y no sólo una consola. El
+   Browser no reemplaza al Workspace: se apoya en él.
 6. **Futuro, no ahora:** `annotations` (`readOnlyHint`, `destructiveHint`,
    `idempotentHint`, `openWorldHint`) y la lista dinámica de herramientas
    (`notifications/tools/list_changed`) para expresar permisos. Se anota para

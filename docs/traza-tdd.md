@@ -394,6 +394,19 @@ Hallazgos del entorno:
   conversión explícita, byte por byte, es la que funciona.
 - El file out depende del `-encoding UTF-8` con el que se lanza el VM.
 
+## El handshake le cuenta al cliente (ciclo 36)
+
+| # | Test | Rojo | Verde | Qué se implementó |
+| --- | --- | --- | --- | --- |
+| 36 | el `initialize` trae `instructions`, y el texto habla de la imagen viva, compartida y del autor | el test nuevo fallaba: el campo no existía | 52/52 | `MCPServerProtocol>>instructions` (ahí vive el texto) y `initializeResult` lo agrega al handshake |
+
+Qué dice el texto: que las herramientas son las operaciones de las ventanas de una imagen viva;
+que la imagen está viva y compartida, que quien es dueño puede ver cada cambio y estar editando
+al mismo tiempo; y que lo que se escribe queda firmado con el autor del dueño, que es su
+responsabilidad. Son hechos que un cliente no puede adivinar, y **no son reglas**: la preferencia
+entre herramientas emerge del catálogo, no de una advertencia del servidor. Ver la decisión 5 del
+README, con su evaluación y su resolución.
+
 ## File out
 
 Quedaron `src/MCPServer.pck.st` (10 clases de producción) y
